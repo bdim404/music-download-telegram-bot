@@ -1,16 +1,11 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*
 
-import logging,os,asyncio,shutil,re,glob,fnmatch
+import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests
 from dotenv import load_dotenv
-import gamdl
-import subprocess
-import requests
 from bs4 import BeautifulSoup
 from telegram import Update,Message
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
-from selenium import webdriver
-from selenium.webdriver.common.by import By
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

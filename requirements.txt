@@ -1,0 +1,5 @@
+beautifulsoup4==4.12.3
+gamdl==1.9.11
+python-dotenv==1.0.1
+python-telegram-bot==20.8
+Requests==2.31.0
