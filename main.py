@@ -9,6 +9,8 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Update,Message
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
+from selenium import webdriver
+from selenium.webdriver.common.by import By
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -77,18 +79,19 @@ async def DownloadAppleMusicSong(update, context):
 
     # Check if the song has been downloaded before
     artist, album, song = get_song_info(songUrl)
-    relative_path = os.path.join('./Apple\ Music', artist, album, f"{song}.m4a")
-    logging.info(f"Checking file: {relative_path}")
-
-    if os.path.exists(relative_path):
-        logging.info(f"Song already downloaded.")
-        await send_song(update.message.chat_id, songUrl)
-    else:
+    n =  get_track_numbers(songUrl)
+    logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
+    try :
+        i = ', '.join(map(str, n))
+        songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb').read()  
+        await Message.reply_audio(update.message.chat_id, songFile)
+        logging.info(f"Song sent successfully.")
+        return
+    except:
         logging.info(f"Song not downloaded yet.")
-    command = ["gamdl"] + [songUrl]
-
 
     # Download the song;
+    command = ["gamdl"] + [songUrl]
     try:
         await replyMessage.edit_text("Downloading the song, please wait...")
         process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -101,15 +104,18 @@ async def DownloadAppleMusicSong(update, context):
         await Update.message.reply_text("An error occurred while downloading the song.")
         return
     chat_id = update.message.chat_id
-    await send_song(chat_id,songUrl)
+    await send_song(n,chat_id,songUrl)
     
     # Get the song info and Send the song to the user;
-async def send_song(chat_id,songUrl):
+async def send_song(n,chat_id,songUrl):
     artist, album, song = get_song_info(songUrl)
     logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
     try:
-        songFile = open(f'/Apple\ Music/{artist}/{album}/{song}.m4a', 'rb')
-        await Message.reply_audio(chat_id, songFile, title=song, performer=artist, caption=album)
+        i = ', '.join(map(str, n))
+        print(i)
+        songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb').read()
+        print(songFile)
+        await Message.reply_audio(chat_id, songFile)
         logging.info(f"Song sent successfully.")
     except Exception as e:
         logging.error(f"An error occurred while sending the song: {e}")
@@ -124,9 +130,25 @@ def get_song_info(url):
     content = meta_element['content']
     keywords = content.split(', ')
     song = keywords[1]
+    song = re.sub(r' - Single', '', song)
     artist = keywords[2]
     album = title_element.get_text(strip=True)
     return artist, album, song
+
+# get the trank name
+def get_track_numbers(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    meta_tags = soup.find_all('meta', {'property': 'music:song:track'})
+    track_numbers = [int(tag['content']) for tag in meta_tags]
+    if len(track_numbers) == 1:
+        if track_numbers[0] < 10:
+            return ["{:02}".format(track_numbers[0])]
+        else:
+            return track_numbers[0]
+    else:
+        return ["{:02}".format(track_number) for track_number in track_numbers]
+        return track_numbers
 
 if __name__ == '__main__':
     bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
