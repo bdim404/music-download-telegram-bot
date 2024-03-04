@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*
 
 import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests
+from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from telegram import Update,Message
-from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-
 # Load the environment variables;
 load_dotenv()
 
+# Get the environment variables;
 try:
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 except:
@@ -30,6 +30,7 @@ except:
     ALLOWED_TELEGRAM_USER_IDS = []
 logging.info("Environment variables loaded.")
 
+# Start message handler;
 async def handleStartMessage(update, context):
     userId = update.message.from_user.id
     logging.info(f"User {userId} started the bot.")
@@ -41,8 +42,8 @@ async def handleStartMessage(update, context):
         await update.message.reply_text("Sorry, you are not allowed to use this bot, please contact admin to get the permission.")
     return
 
-
-async def handleRequest(update, context):
+# Request handler;
+async def handleRequest(update: Update, context):
     userId = update.message.from_user.id
     logging.info(f"User {userId} sent a message.")
     if update.message.chat.type == "private":
@@ -62,8 +63,8 @@ async def handleRequest(update, context):
     if "https://music.apple.com" in update.message.text :
         await DownloadAppleMusicSong(update, context)
 
-
-async def DownloadAppleMusicSong(update, context):
+# Download the Apple Music song;
+async def DownloadAppleMusicSong(update: Update, context):
     replyMessage = await  update.message.reply_text("Finding the song, please wait...")
     userId = update.message.from_user.id
     logging.info(f"User {userId} sent a Apple Music song.")
@@ -71,19 +72,24 @@ async def DownloadAppleMusicSong(update, context):
     # Get the URL of the song;
     songUrl = update.message.text
     logging.info(f"Song URL: {songUrl}")
+    n =  get_track_numbers(songUrl)
 
     # Check if the song has been downloaded before
-    artist, album, song = get_song_info(songUrl)
-    n =  get_track_numbers(songUrl)
-    logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
-    try :
+    try:
+        artist, album, song = get_song_info(songUrl)
+        logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
         i = ', '.join(map(str, n))
-        songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb').read()  
-        await Message.reply_audio(update.message.chat_id, songFile)
-        logging.info(f"Song sent successfully.")
-        return
-    except:
+        try:
+            songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb') 
+            await update.message.reply_audio(audio=songFile)
+            logging.info(f"Song sent successfully.")
+            return
+        except FileNotFoundError:
+            logging.info(f"Song not downloaded yet.")
+            pass
+    except FileNotFoundError:
         logging.info(f"Song not downloaded yet.")
+        pass
 
     # Download the song;
     command = ["gamdl"] + [songUrl]
@@ -96,27 +102,26 @@ async def DownloadAppleMusicSong(update, context):
         logging.info(f"Song downloaded successfully.")
     except Exception as e:
         logging.error(f"An error occurred while downloading the song: {e}")
-        await Update.message.reply_text("An error occurred while downloading the song.")
+        await update.message.reply_text("An error occurred while downloading the song.")
         return
-    chat_id = update.message.chat_id
-    await send_song(n,chat_id,songUrl)
+    await send_song(update,n,songUrl)
     
-    # Get the song info and Send the song to the user;
-async def send_song(n,chat_id,songUrl):
+# Send the song to the user; 
+async def send_song(update: Update ,n,songUrl):
+    # Check if the song has been downloaded before
     artist, album, song = get_song_info(songUrl)
     logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
+    i = ', '.join(map(str, n))
     try:
-        i = ', '.join(map(str, n))
-        print(i)
-        songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb').read()
-        print(songFile)
-        await Message.reply_audio(chat_id, songFile)
+        songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb') 
+        await update.message.reply_audio(audio=songFile)
         logging.info(f"Song sent successfully.")
-    except Exception as e:
-        logging.error(f"An error occurred while sending the song: {e}")
-        return
+        return 
+    except FileNotFoundError:
+        logging.info(f"Song sent fail.")
 
 
+ # Get the song info and Send the song to the user;
 def get_song_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
