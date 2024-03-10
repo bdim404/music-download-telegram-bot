@@ -6,6 +6,9 @@ from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filter
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from telegram import Update,Message
+from urllib.parse import urlparse, parse_qs
+from http.cookiejar import MozillaCookieJar
+from pydub import AudioSegment
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -71,17 +74,14 @@ async def DownloadAppleMusicSong(update: Update, context):
 
     # Get the URL of the song;
     songUrl = update.message.text
-    logging.info(f"Song URL: {songUrl}")
-    n =  get_track_numbers(songUrl)
-
+    artist, album, disc, album_sort = await webplayback.get_webplayback(songUrl)
     # Check if the song has been downloaded before
     try:
-        artist, album, song = get_song_info(songUrl)
-        logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
-        i = ', '.join(map(str, n))
+        logging.info(f"/Apple Music/{artist}/{album}/{disc} {album_sort}")
         try:
-            songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb') 
+            songFile = open(f'./Apple Music/{artist}/{album}/{disc} {album_sort}.m4a', 'rb') 
             await update.message.reply_audio(audio=songFile)
+            await replyMessage.edit_text("Song sent successfully.")
             logging.info(f"Song sent successfully.")
             return
         except FileNotFoundError:
@@ -93,6 +93,7 @@ async def DownloadAppleMusicSong(update: Update, context):
 
     # Download the song;
     command = ["gamdl"] + [songUrl]
+    logging.info(f"Command: {' '.join(command)}")
     try:
         await replyMessage.edit_text("Downloading the song, please wait...")
         process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -104,55 +105,91 @@ async def DownloadAppleMusicSong(update: Update, context):
         logging.error(f"An error occurred while downloading the song: {e}")
         await update.message.reply_text("An error occurred while downloading the song.")
         return
-    await send_song(update,n,songUrl)
+    await send_song(update,artist,album,disc,album_sort)
     
 # Send the song to the user; 
-async def send_song(update: Update ,n,songUrl):
-    # Check if the song has been downloaded before
-    artist, album, song = get_song_info(songUrl)
-    logging.info(f"Song: {song} - Artist: {artist} - Album: {album}")
-    i = ', '.join(map(str, n))
+async def send_song(update: Update ,artist,album,disc,album_sort):
+
+    logging.info(f"/Apple Music/{artist}/{album}/{disc} {album_sort}")
     try:
-        songFile = open(f'./Apple Music/{artist}/{album}/{i} {song}.m4a', 'rb') 
+        songFile = open(f'./Apple Music/{artist}/{album}/{disc} {album_sort}.m4a', 'rb') 
         await update.message.reply_audio(audio=songFile)
         logging.info(f"Song sent successfully.")
+        await replyMessage.reply_text("Song sent successfully.")
         return 
     except FileNotFoundError:
         logging.info(f"Song sent fail.")
 
 
- # Get the song info and Send the song to the user;
-def get_song_info(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    title_element = soup.select_one('.headings__title.svelte-1la0y7y')
-    meta_element = soup.select_one('meta[name="keywords"]')
-    content = meta_element['content']
-    keywords = content.split(', ')
-    song = keywords[1]
-    song = re.sub(r' - Single', '', song)
-    artist = keywords[2]
-    album = title_element.get_text(strip=True)
-    return artist, album, song
 
-# get the trank name
-def get_track_numbers(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    meta_tags = soup.find_all('meta', {'property': 'music:song:track'})
-    track_numbers = [int(tag['content']) for tag in meta_tags]
-    if len(track_numbers) == 1:
-        if track_numbers[0] < 10:
-            return ["{:02}".format(track_numbers[0])]
-        else:
-            return track_numbers[0]
-    else:
-        return ["{:02}".format(track_number) for track_number in track_numbers]
-        return track_numbers
+class WebPlayback:
+    def __init__(self, cookies_location):
+        self.cookies_location = cookies_location
+        self.session = requests.Session()
+
+    def setup_session(self) -> None:
+        cookies = MozillaCookieJar(self.cookies_location)
+        cookies.load(ignore_discard=True, ignore_expires=True)
+        self.session.cookies.update(cookies)
+        self.session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0",
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate, br",
+                "content-type": "application/json",
+                "Media-User-Token": self.session.cookies.get_dict()["media-user-token"],
+                "x-apple-renewal": "true",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-site",
+                "origin": "https://beta.music.apple.com",
+            }
+        )
+        home_page = self.session.get("https://beta.music.apple.com").text
+        index_js_uri = re.search(r"/(assets/index-legacy-[^/]+\.js)", home_page).group(1)
+        index_js_page = self.session.get(f"https://beta.music.apple.com/{index_js_uri}").text
+        token = re.search('(?=eyJh)(.*?)(?=")', index_js_page).group(1)
+        self.session.headers.update({"authorization": f"Bearer {token}"})
+
+    async def get_webplayback(self, url: str) -> dict:
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        track_id = query_params.get('i', [''])[0]
+
+        json_data = {
+            "salableAdamId": track_id,
+            "language": "en-US",
+        }
+
+        response = self.session.post(
+            "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/webPlayback",
+            json=json_data,
+        )
+
+        response_json = response.json()
+
+        song_list = response_json.get('songList', [{}])
+        assets = song_list[0].get('assets', [{}])
+        metadata = assets[0].get('metadata', {})
+
+        album = metadata.get('playlistName')
+        artist = metadata.get('playlistArtistName')
+        album_sort = metadata.get('itemName')
+        disc = metadata.get('trackNumber')
+        disc = "{:02}".format(disc)
+
+        print(response_json)
+        response = requests.get(url, stream=True)
+        return artist, album, disc, album_sort
 
 if __name__ == '__main__':
     bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     bot.add_handler(CommandHandler("start", handleStartMessage))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handleRequest))
+    webplayback = WebPlayback("cookies.txt")
+    webplayback.setup_session()
     bot.run_polling()
     logging.info("Bot application started")
