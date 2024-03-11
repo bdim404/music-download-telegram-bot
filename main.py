@@ -1,15 +1,15 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*
 
-import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
-from dotenv import load_dotenv
-from bs4 import BeautifulSoup
-from telegram import Update,Message
+import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests
 from urllib.parse import urlparse, parse_qs
 from http.cookiejar import MozillaCookieJar
-from pydub import AudioSegment
 from db import get_session,musicSong
+from telegram import Update,Message
+from pydub import AudioSegment
+from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 from retrying import retry
 
 # Configure the logging;
@@ -202,7 +202,6 @@ async def download_song(update: Update,url):
         logging.info(f"Song downloaded successfully.")
     except Exception as e:
         logging.error(f"An error occurred while downloading the song: {e}")
-
         return
 
 #rename the song file;
