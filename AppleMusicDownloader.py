@@ -1,16 +1,11 @@
-import os
-import shutil
-import re
-import logging
-import asyncio
-import glob
+import logging,os,asyncio,shutil,re,glob,subprocess
+from AppleMusicWebPlayback import WebPlayback
 from urllib.parse import urlparse, parse_qs
-from pydub import AudioSegment
-from telegram import Update
 from sqlalchemy.orm import sessionmaker
 from db import musicSong, get_session
-from AppleMusicWebPlayback import WebPlayback
 from get_cover_art import CoverFinder
+from pydub import AudioSegment
+from telegram import Update
 
 web_playback = WebPlayback()
 session = web_playback.setup_session("cookies.txt")

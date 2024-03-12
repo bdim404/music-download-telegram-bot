@@ -1,20 +1,11 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*
 
-import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests,tempfile
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
-from urllib.parse import urlparse, parse_qs
-from http.cookiejar import MozillaCookieJar
-from get_cover_art import CoverFinder
-from db import get_session,musicSong
-from telegram import Update,Message
-from pydub import AudioSegment
-from dotenv import load_dotenv
-from pydub import AudioSegment
-from bs4 import BeautifulSoup
-from retrying import retry
 from AppleMusicDownloader import AppleMusicDownloader
-
+from telegram import Update,Message
+from dotenv import load_dotenv
+import logging,os,asyncio,re
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
