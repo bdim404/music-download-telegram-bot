@@ -1,16 +1,20 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*
 
+import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests,tempfile
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
-import logging,os,asyncio,shutil,re,glob,fnmatch,gamdl,subprocess,requests
 from urllib.parse import urlparse, parse_qs
 from http.cookiejar import MozillaCookieJar
+from get_cover_art import CoverFinder
 from db import get_session,musicSong
 from telegram import Update,Message
 from pydub import AudioSegment
 from dotenv import load_dotenv
+from pydub import AudioSegment
 from bs4 import BeautifulSoup
 from retrying import retry
+
+
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -105,7 +109,9 @@ async def CheckLinkType(update: Update, context):
 
 #check if the song has been downloaded before from sql;
 async def CheckSongInSql(update: Update, url):
-    await update.message.reply_text("Finding the song in the database...")
+    replyMessage = await update.message.reply_text("Finding the song in the database...")
+    message_chat_id = replyMessage.chat.id
+    message_message_id = replyMessage.message_id   
     sql_session = get_session()
     id = parse_qs(urlparse(url).query)['i'][0]
     logging.info(f"ID: {id}")
@@ -119,12 +125,14 @@ async def CheckSongInSql(update: Update, url):
         logging.info("Song found in the database.")
         await update.message.reply_audio(audio=file_id)
         logging.info("Song sent to the user.")
+        await replyMessage.edit_text("Find out, sent to you!")
+        await replyMessage.delete()
         return
     except:
+        await replyMessage.delete()
         pass
     finally:
         sql_session.close()
-    
     await download_song(update,url)
     songs = await web_playback.get_song(session, id)
     return await send_song(update, songs)
@@ -132,7 +140,7 @@ async def CheckSongInSql(update: Update, url):
 
 #check if the album has been downloaded before from sql;
 async def CheckAlbumInSql(update: Update, url):
-    await update.message.reply_text("Finding the album in the database...")
+    replyMessage = await update.message.reply_text("Finding the album in the database...")
     sql_session = get_session()
     id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
     logging.info(f"ID: {id}")
@@ -151,7 +159,10 @@ async def CheckAlbumInSql(update: Update, url):
                 all_songs_found = False
                 continue
         if all_songs_found:
+            await replyMessage.edit_text("Find out, senting to you!")
             return
+        else:
+            await replyMessage.delete()
     except Exception as e:
         logging.error(f"Error: {e}")
     finally:
@@ -162,7 +173,7 @@ async def CheckAlbumInSql(update: Update, url):
 
 #check if the playlist has been downloaded before from sql;
 async def CheckPlaylistInSql(update: Update ,url):
-    await update.message.reply_text("Finding the album in the database...")
+    replyMessage = await update.message.reply_text("Finding the playlist in the database...")
     sql_session = get_session()
     id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
     logging.info(f"ID: {id}")
@@ -181,7 +192,10 @@ async def CheckPlaylistInSql(update: Update ,url):
                 all_songs_found = False
                 continue
         if all_songs_found:
+            await replyMessage.edit_text("Find out, senting to you!")
             return
+        else:
+            await replyMessage.delete()
     except Exception as e:
         logging.error(f"Error: {e}")
     finally:
@@ -192,7 +206,7 @@ async def CheckPlaylistInSql(update: Update ,url):
 
 #download the song;
 async def download_song(update: Update,url):
-    await update.message.reply_text("Song downloading...")
+    replyMessage = await update.message.reply_text("Donwloading the song...")
     command = ["gamdl"] + [url]
     logging.info(f"Command: {' '.join(command)}")
     try:
@@ -200,6 +214,7 @@ async def download_song(update: Update,url):
         stdout, stderr = await process.communicate()
         await process.wait()  
         logging.info(f"Song downloaded successfully.")
+        await replyMessage.delete()
     except Exception as e:
         logging.error(f"An error occurred while downloading the song: {e}")
         return
@@ -214,7 +229,7 @@ async def rename_song_file():
                 # 解析出歌手名
                 artist_name = os.path.basename(os.path.dirname(root))
                 # 创建新的文件名
-                new_file_name = f"{os.path.splitext(file)[0]} -{artist_name}.m4a"
+                new_file_name = f"{os.path.splitext(file)[0].replace('_', '')} -{artist_name}.m4a"
                 # 创建新的文件路径
                 new_file_path = os.path.join(root, new_file_name)
                 # 创建旧的文件路径
@@ -228,11 +243,12 @@ async def rename_song_file():
 
 #delete the song file;
 async def delete_song_file():
-    directories = ["./Apple Music", "./temp"]
+    directories = ["./Apple Music", "./temp", "./CoverArt"]
     for directory in directories:
         try:
             if os.path.exists(directory):
                 shutil.rmtree(directory)
+                logging.info(f"The directory {directory} has been deleted")
             else:
                 logging.info(f"The directory {directory} does not exist")
         except PermissionError:
@@ -242,25 +258,72 @@ async def delete_song_file():
 
 #send the song to the user; 
 async def send_song(update: Update, songs):
+    replyMessage = await update.message.reply_text("Song downloaded successfully,sending to you!")
     renamed_files = await rename_song_file()
     file_id_dict = {}
     for song_path in renamed_files:
         song_name = os.path.basename(song_path)
         logging.info(f"Song_path: {song_path} Song_name: {song_name}")
+        cover_art_path = os.path.basename(song_path).replace('.m4a', '')
+        #从路径中提取去除.m4a的文件名
+        song_name_without_extension = os.path.splitext(song_name)[0]
         try:
-            with open(song_path, 'rb') as audio_file:
-                message = await update.message.reply_audio(audio=audio_file)
+            # 下载封面艺术
+            options = {
+                'verbose': True,
+                'no-skip': True,
+                'force': True,
+                'art-dest': './CoverArt',
+                'art-dest-filename': cover_art_path + '.jpg',
+                'path': song_path
+            }
+            logging.info(f"Options: {options}")
+            await download_cover_art(song_name_without_extension, options)
+            
+            # 获取封面艺术的路径
+            cover_art_paths = glob.glob("./CoverArt/*.jpg")
+            cover_art_path = cover_art_paths[0] if cover_art_paths else None
+            logging.info(f"Cover art path: {cover_art_path}")
+            
+            song_name_without_number = song_name_without_extension[2:]
+            logging.info(f"Song name without number: {song_name_without_number}")
+            # 使用 '-' 拆分 song_name_without_number
+            title, performer = song_name_without_number.rsplit('-', 1)
+
+            # 去除前后的空格
+            title = title.strip()
+            performer = performer.strip()
+            # 获取音乐的时长
+            audio = AudioSegment.from_file(song_path)
+            duration = audio.duration_seconds
+            logging.info(f"Title: {title} Performer: {performer}")
+            message = await update.message.reply_audio(audio=song_path, thumbnail=cover_art_path, duration=duration,performer=performer, title=title)
             file_id = message.audio.file_id
+            os.remove(cover_art_path)
         except:
             logging.error(f"An error occurred while sending the song")
-            await delete_song_file()
             break
         logging.info(f"File ID: {file_id}")
         song_name = song_name.replace('.m4a', '')
         file_id_dict[song_name] = file_id
+    await replyMessage.delete()
     logging.info(f"File ID dict: {file_id_dict}")
     await SaveSongInfoToSql(file_id_dict,songs)
     
+#download the cover art;
+async def download_cover_art(song_name_without_extension, options):
+    finder = CoverFinder(options)
+    finder.scan_file(options['path'])
+    jpg_files = glob.glob("./CoverArt/*.jpg")
+
+    # 如果存在 .jpg 文件
+    if jpg_files:
+        # 获取第一个 .jpg 文件
+        jpg_file = jpg_files[0]
+        # 创建新的文件名
+        new_file_name = f"./CoverArt/{song_name_without_extension}.jpg"
+        # 重命名文件
+        os.rename(jpg_file, new_file_name)
 
 #stone the song info to sql;
 async def SaveSongInfoToSql(file_id_dict, songs):
@@ -272,7 +335,7 @@ async def SaveSongInfoToSql(file_id_dict, songs):
         logging.info(f"Song name: {song_name} File ID: {file_id}")
         for song in songs:
             logging.info(f"Checking song: {song[1]}")
-            if song[1] == song_name:
+            if song_name[:4] == song[1][:4] or song_name[-4:] == song[1][-4:]:
                 logging.info(f"Song: {song[1]} song_name: {song_name}")
                 song_id = song[0]
                 logging.info(f"Song ID: {song_id}")
@@ -281,6 +344,7 @@ async def SaveSongInfoToSql(file_id_dict, songs):
                     musicSongItem = musicSong(id=song_id, file_id=file_id)
                     logging.info(f"New song: {musicSongItem}")
                     sql_session.add(musicSongItem)
+                    logging.info(f"Saveing the {song_id} song_name {song_name} file_id {file_id}saved in the database.")
                 else:
                     logging.info(f"Song with ID {song_id} already exists, skipping")
     logging.info("Song saved in the database.")
@@ -354,7 +418,7 @@ class WebPlayback:
             song_name = song['attributes']['name']
             track_number = str(song['attributes']['trackNumber']).zfill(2)
             artist_name = album_data["attributes"]["artistName"]
-            song_name = f"{track_number} {song_name} - {artist_name}"
+            song_name = f"{track_number} {song_name} -{artist_name}"
             songs.append((song_id, song_name))  # 将歌曲的 id 和名称作为一个元组添加到列表中
     
         return songs
@@ -376,12 +440,11 @@ class WebPlayback:
             song_id = song['id']
             song_name = song['attributes']['name']
             track_number = str(song['attributes']['trackNumber']).zfill(2)
-            artist_name = playlist_data["attributes"]["artistName"]
-            song_name = f"{track_number} {song_name} - {artist_name}"
+            artist_name = attributes["artistName"]
+            song_name = f"{track_number} {song_name} -{artist_name}"
             songs.append((song_id, song_name))  # 将歌曲的 id 和名称作为一个元组添加到列表中
     
         return songs
-
 
 if __name__ == '__main__':
     bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
