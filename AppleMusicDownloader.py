@@ -6,6 +6,8 @@ from db import musicSong, get_session
 from get_cover_art import CoverFinder
 from pydub import AudioSegment
 from telegram import Update
+import time
+
 
 web_playback = WebPlayback()
 session = web_playback.setup_session("cookies.txt")
@@ -40,25 +42,22 @@ class AppleMusicDownloader:
     #check if the song has been downloaded before from sql;
     async def CheckSongInSql(self, update: Update, url):
         replyMessage = await update.message.reply_text("Finding the song in the database...")
-        message_chat_id = replyMessage.chat.id
-        message_message_id = replyMessage.message_id   
         sql_session = get_session()
         id = parse_qs(urlparse(url).query)['i'][0]
         logging.info(f"ID: {id}")
-        songs = await web_playback.get_song(session, id)
-        logging.info(f"Songs: {songs}")
         try:
-            song = songs[0]
-            song_item = sql_session.query(musicSong).filter_by(id=song[0]).first()
-            file_id = song_item.file_id
-            logging.info(f"File ID: {file_id}")
-            logging.info("Song found in the database.")
-            await update.message.reply_audio(audio=file_id)
-            logging.info("Song sent to the user.")
-            await replyMessage.edit_text("Find out, sent to you!")
-            await replyMessage.delete()
-            return
+            song_item = sql_session.query(musicSong).filter_by(id=id).first()
+            if song_item is not None:
+                file_id = song_item.file_id
+                logging.info(f"File ID: {file_id}")
+                logging.info("Song found in the database.")
+                await update.message.reply_audio(audio=file_id)
+                logging.info("Song sent to the user.")
+                await replyMessage.edit_text("Find out, sent to you!")
+                await replyMessage.delete()
+                return
         except:
+            await asyncio.sleep(3)
             await replyMessage.delete()
             pass
         finally:
@@ -78,20 +77,23 @@ class AppleMusicDownloader:
         logging.info(f"Songs: {songs}")
         all_songs_found = True
         try:
-            for song in songs:
-                song_item = sql_session.query(musicSong).filter_by(id=song[0]).first()
+            for song_id, track_number, song_name, artist_name in songs:
+                song_item = sql_session.query(musicSong).filter_by(id=song_id).first()
                 if song_item is not None:
                     file_id = song_item.file_id
                     logging.info(f"File ID: {file_id}")
                     await update.message.reply_audio(audio=file_id)
                 else:
-                    logging.info(f"No song item found for ID: {song[0]}")
+                    logging.info(f"No song item found for ID: {song_id}")
                     all_songs_found = False
                     continue
             if all_songs_found:
                 await replyMessage.edit_text("Find out, senting to you!")
+                await asyncio.sleep(3)
+                await replyMessage.delete()
                 return
             else:
+                await asyncio.sleep(3)
                 await replyMessage.delete()
         except Exception as e:
             logging.error(f"Error: {e}")
@@ -111,20 +113,21 @@ class AppleMusicDownloader:
         logging.info(f"Songs: {songs}")
         all_songs_found = True
         try:
-            for song in songs:
-                song_item = sql_session.query(musicSong).filter_by(id=song[0]).first()
+            for song_id, track_number, song_name, artist_name in songs:
+                song_item = sql_session.query(musicSong).filter_by(id=song_id).first()
                 if song_item is not None:
                     file_id = song_item.file_id
                     logging.info(f"File ID: {file_id}")
                     await update.message.reply_audio(audio=file_id)
                 else:
-                    logging.info(f"No song item found for ID: {song[0]}")
+                    logging.info(f"No song item found for ID: {song_id}")
                     all_songs_found = False
                     continue
             if all_songs_found:
                 await replyMessage.edit_text("Find out, senting to you!")
                 return
             else:
+                await asyncio.sleep(3)
                 await replyMessage.delete()
         except Exception as e:
             logging.error(f"Error: {e}")
@@ -150,24 +153,31 @@ class AppleMusicDownloader:
             return
 
     #rename the song file;
-    async def rename_song_file(self):
+    async def rename_song_file(self, songs):
         directory = "./Apple Music"  # Specify the directory to traverse
         renamed_files = []
+        logging.info(f"songs: {songs}")
         for root, dirs, files in os.walk(directory):
             for file in files:
                 if file.endswith(".m4a"):
-                    # 解析出歌手名
-                    artist_name = os.path.basename(os.path.dirname(root))
                     # 创建新的文件名
-                    new_file_name = f"{os.path.splitext(file)[0].replace('_', '')} -{artist_name}.m4a"
-                    # 创建新的文件路径
-                    new_file_path = os.path.join(root, new_file_name)
-                    # 创建旧的文件路径
-                    old_file_path = os.path.join(root, file)
-                    # 重命名文件
-                    os.rename(old_file_path, new_file_path)
-                    # 将新的文件路径添加到列表中
-                    renamed_files.append(new_file_path)
+                    for song in songs:
+                        track_number = song[1]
+                        song_name = song[2]
+                        artist_name = f"{song[3]}"
+                        new_song_name = f"{track_number} {song_name}"
+                        if new_song_name[:4] == os.path.splitext(file)[0][:4]:
+                            new_file_name = f"{new_song_name} - {artist_name}.m4a"
+                            # 创建新的文件路径
+                            new_file_path = os.path.join(root, new_file_name)
+                            # 创建旧的文件路径
+                            old_file_path = os.path.join(root, file)
+                            # 重命名文件
+                            os.rename(old_file_path, new_file_path)
+                            # 将新的文件路径添加到列表中
+                            logging.info(f"New file path: {new_file_path}, Song name: {song_name}, Artist name: {artist_name}")
+                            renamed_files.append((new_file_path,song_name,artist_name))
+                            break
         logging.info(f"Renamed files: {renamed_files}")
         return renamed_files
 
@@ -189,71 +199,35 @@ class AppleMusicDownloader:
     #send the song to the user; 
     async def send_song(self, update: Update, songs):
         replyMessage = await update.message.reply_text("Song downloaded successfully,sending to you!")
-        renamed_files = await self.rename_song_file()
+        renamed_files = await self.rename_song_file(songs)
         file_id_dict = {}
-        for song_path in renamed_files:
-            song_name = os.path.basename(song_path)
-            logging.info(f"Song_path: {song_path} Song_name: {song_name}")
-            cover_art_path = os.path.basename(song_path).replace('.m4a', '')
-            #从路径中提取去除.m4a的文件名
-            song_name_without_extension = os.path.splitext(song_name)[0]
+        for song_path, song_name, artist_name in renamed_files:
+            logging.info(f"Song_path: {song_path} Song_name: {song_name} Artist_name: {artist_name}")
             try:
-                # 下载封面艺术
-                options = {
-                    'verbose': True,
-                    'no-skip': True,
-                    'force': True,
-                    'art-dest': './CoverArt',
-                    'art-dest-filename': cover_art_path + '.jpg',
-                    'path': song_path
-                }
-                logging.info(f"Options: {options}")
-                await self.download_cover_art(song_name_without_extension, options)
-                
-                # 获取封面艺术的路径
-                cover_art_paths = glob.glob("./CoverArt/*.jpg")
-                cover_art_path = cover_art_paths[0] if cover_art_paths else None
-                logging.info(f"Cover art path: {cover_art_path}")
-                
-                song_name_without_number = song_name_without_extension[2:]
-                logging.info(f"Song name without number: {song_name_without_number}")
-                # 使用 '-' 拆分 song_name_without_number
-                title, performer = song_name_without_number.rsplit('-', 1)
-
-                # 去除前后的空格
-                title = title.strip()
-                performer = performer.strip()
-                # 获取音乐的时长
+            # 获取音乐的时长
                 audio = AudioSegment.from_file(song_path)
                 duration = audio.duration_seconds
-                logging.info(f"Title: {title} Performer: {performer}")
-                message = await update.message.reply_audio(audio=song_path, thumbnail=cover_art_path, duration=duration,performer=performer, title=title)
+                # 遍历当前目录./CoverArt中的jpg文件
+                for file in glob.glob(f"./CoverArt/*.jpg"):
+                    # 获取文件名 并与song_name进行比较
+                    filename, _ = os.path.splitext(os.path.basename(file))
+                    if filename == song_name:
+                        logging.info(f"Checking files: {filename},Song name: {song_name}")
+                        cover_art_path = file
+                        logging.info(f"Cover art path: {cover_art_path}")
+                        break
+                message = await update.message.reply_audio(audio=song_path, thumbnail=cover_art_path, duration=duration, performer=artist_name, title=song_name)
                 file_id = message.audio.file_id
                 os.remove(cover_art_path)
+                song_send_name = song_name
+                file_id_dict[song_send_name] = file_id
             except:
                 logging.error(f"An error occurred while sending the song")
                 break
-            logging.info(f"File ID: {file_id}")
-            song_name = song_name.replace('.m4a', '')
-            file_id_dict[song_name] = file_id
+            
         await replyMessage.delete()
         logging.info(f"File ID dict: {file_id_dict}")
-        await self.SaveSongInfoToSql(file_id_dict,songs)
-        
-    #download the cover art;
-    async def download_cover_art(self,song_name_without_extension, options):
-        finder = CoverFinder(options)
-        finder.scan_file(options['path'])
-        jpg_files = glob.glob("./CoverArt/*.jpg")
-
-        # 如果存在 .jpg 文件
-        if jpg_files:
-            # 获取第一个 .jpg 文件
-            jpg_file = jpg_files[0]
-            # 创建新的文件名
-            new_file_name = f"./CoverArt/{song_name_without_extension}.jpg"
-            # 重命名文件
-            os.rename(jpg_file, new_file_name)
+        await self.SaveSongInfoToSql(file_id_dict, songs)
 
     #stone the song info to sql;
     async def SaveSongInfoToSql(self, file_id_dict, songs):
@@ -261,14 +235,11 @@ class AppleMusicDownloader:
         logging.info(f"songs: {songs}")
         logging.info("save song info to sql")
         logging.info(f"song info: {file_id_dict}")
-        for song_name, file_id in file_id_dict.items():
-            logging.info(f"Song name: {song_name} File ID: {file_id}")
-            for song in songs:
-                logging.info(f"Checking song: {song[1]}")
-                if song_name[:4] == song[1][:4] or song_name[-4:] == song[1][-4:]:
-                    logging.info(f"Song: {song[1]} song_name: {song_name}")
-                    song_id = song[0]
-                    logging.info(f"Song ID: {song_id}")
+        for song_send_name, file_id in file_id_dict.items():
+            logging.info(f"Song name: {song_send_name} File ID: {file_id}")
+            for song_id, track_number, song_name, artist_name in songs:
+                if song_send_name == song_name:
+                    logging.info(f"Song name: {song_name} File ID: {file_id}")
                     existing_song = sql_session.query(musicSong).filter_by(id=song_id).first()
                     if existing_song is None:
                         musicSongItem = musicSong(id=song_id, file_id=file_id)

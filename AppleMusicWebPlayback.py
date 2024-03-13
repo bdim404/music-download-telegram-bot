@@ -1,8 +1,10 @@
-import re
+import re,os
 import requests
 from http.cookiejar import MozillaCookieJar
 from retrying import retry
 from requests.exceptions import ConnectionError
+from PIL import Image
+from io import BytesIO
 
 # set the retrying decorator;
 def retry_if_connection_error(exception):
@@ -51,8 +53,15 @@ class WebPlayback:
         song_name = song_data["attributes"]["name"]
         artist_name = song_data["attributes"]["artistName"]
         track_number = str(song_data["attributes"]["trackNumber"]).zfill(2)
-
-        songs = [[song_id, f"{track_number} {song_name} -{artist_name}"]]
+        artwork_url = song_data["attributes"]["artwork"]["url"].format(w=300, h=300)
+        os.makedirs('./CoverArt', exist_ok=True)
+        # 下载图片
+        response = requests.get(artwork_url)
+        # 打开图片
+        image = Image.open(BytesIO(response.content))
+        # 保存图片
+        image.save(f"./CoverArt/{song_name}.jpg")
+        songs = [[song_id, track_number, song_name, artist_name]]
         return songs
 
     @retry(retry_on_exception=retry_if_connection_error, stop_max_attempt_number=5)
@@ -61,6 +70,7 @@ class WebPlayback:
         response_json = response.json()
         album_data = response_json["data"][0]
         album_songs = album_data['relationships']['tracks']['data']
+        os.makedirs('./CoverArt', exist_ok=True)
 
         songs = []
         for song in album_songs:
@@ -73,9 +83,15 @@ class WebPlayback:
             song_name = song['attributes']['name']
             track_number = str(song['attributes']['trackNumber']).zfill(2)
             artist_name = album_data["attributes"]["artistName"]
-            song_name = f"{track_number} {song_name} -{artist_name}"
-            songs.append((song_id, song_name))  # 将歌曲的 id 和名称作为一个元组添加到列表中
-    
+            artwork_url = song['attributes']['artwork']['url'].format(w=300, h=300)
+            # 下载图片
+            response = requests.get(artwork_url)
+            # 打开图片
+            image = Image.open(BytesIO(response.content))
+            # 保存图片
+            image.save(f"./CoverArt/{song_name}.jpg")
+            songs.append((song_id, track_number, song_name, artist_name))  # 将歌曲的 id 和名称作为一个元组添加到列表中
+
         return songs
 
     @retry(retry_on_exception=retry_if_connection_error, stop_max_attempt_number=5)
@@ -84,6 +100,7 @@ class WebPlayback:
         response_json = response.json()
         playlist_data = response_json["data"][0]
         playlist_songs = playlist_data['relationships']['tracks']['data']
+        os.makedirs('./CoverArt', exist_ok=True)
 
         songs = []
         for song in playlist_songs:
@@ -96,7 +113,12 @@ class WebPlayback:
             song_name = song['attributes']['name']
             track_number = str(song['attributes']['trackNumber']).zfill(2)
             artist_name = attributes["artistName"]
-            song_name = f"{track_number} {song_name} -{artist_name}"
-            songs.append((song_id, song_name))  # 将歌曲的 id 和名称作为一个元组添加到列表中
-    
+            artwork_url = song['attributes']['artwork']['url'].format(w=300, h=300)
+            # 下载图片
+            response = requests.get(artwork_url)
+            # 打开图片
+            image = Image.open(BytesIO(response.content))
+            # 保存图片
+            image.save(f"./CoverArt/{song_name}.jpg")
+            songs.append((song_id, track_number, song_name, artist_name))
         return songs
