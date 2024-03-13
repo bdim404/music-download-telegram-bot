@@ -54,17 +54,14 @@ class AppleMusicDownloader:
                 await update.message.reply_audio(audio=file_id)
                 logging.info("Song sent to the user.")
                 await replyMessage.edit_text("Find out, sent to you!")
-                await replyMessage.delete()
                 return
         except:
-            await asyncio.sleep(3)
-            await replyMessage.delete()
             pass
         finally:
             sql_session.close()
-        await self.download_song(update,url)
+        await self.download_song(update,url,replyMessage,1)
         songs = await web_playback.get_song(session, id)
-        return await self.send_song(update, songs)
+        return await self.send_song(update, songs,replyMessage)
 
 
     #check if the album has been downloaded before from sql;
@@ -77,6 +74,7 @@ class AppleMusicDownloader:
         logging.info(f"Songs: {songs}")
         all_songs_found = True
         try:
+            not_found_count = 0  # 添加计数器
             for song_id, track_number, song_name, artist_name in songs:
                 song_item = sql_session.query(musicSong).filter_by(id=song_id).first()
                 if song_item is not None:
@@ -85,23 +83,20 @@ class AppleMusicDownloader:
                     await update.message.reply_audio(audio=file_id)
                 else:
                     logging.info(f"No song item found for ID: {song_id}")
+                    not_found_count += 1  # 增加计数器的值
                     all_songs_found = False
                     continue
             if all_songs_found:
                 await replyMessage.edit_text("Find out, senting to you!")
-                await asyncio.sleep(3)
                 await replyMessage.delete()
                 return
-            else:
-                await asyncio.sleep(3)
-                await replyMessage.delete()
         except Exception as e:
             logging.error(f"Error: {e}")
         finally:
             sql_session.close()
 
-        await self.download_song(update,url)
-        return await self.send_song(update, songs)
+        await self.download_song(update,url,replyMessage,not_found_count)
+        return await self.send_song(update, songs,replyMessage)
 
     #check if the playlist has been downloaded before from sql;
     async def CheckPlaylistInSql(self, update: Update ,url):
@@ -113,6 +108,7 @@ class AppleMusicDownloader:
         logging.info(f"Songs: {songs}")
         all_songs_found = True
         try:
+            not_found_count = 0  # 添加计数器
             for song_id, track_number, song_name, artist_name in songs:
                 song_item = sql_session.query(musicSong).filter_by(id=song_id).first()
                 if song_item is not None:
@@ -121,25 +117,27 @@ class AppleMusicDownloader:
                     await update.message.reply_audio(audio=file_id)
                 else:
                     logging.info(f"No song item found for ID: {song_id}")
+                    not_found_count += 1
                     all_songs_found = False
                     continue
             if all_songs_found:
                 await replyMessage.edit_text("Find out, senting to you!")
-                return
-            else:
-                await asyncio.sleep(3)
                 await replyMessage.delete()
+                return
         except Exception as e:
             logging.error(f"Error: {e}")
         finally:
             sql_session.close()
         
-        await self.download_song(update, url)
-        return await self.send_song(update, songs)
+        replyMessage = await self.download_song(update, url, replyMessage,not_found_count)
+        return await self.send_song(update, songs, replyMessage)
 
     #download the song;
-    async def download_song(self, update: Update,url):
-        replyMessage = await update.message.reply_text("Donwloading the song...")
+    async def download_song(self, update: Update, url, replyMessage, not_found_count):
+        if not_found_count == 1:
+            await replyMessage.edit_text("Donwloading the song...")
+        else:
+            await replyMessage.edit_text(f"Donwloading {not_found_count} songs...")
         command = ["gamdl"] + [url]
         logging.info(f"Command: {' '.join(command)}")
         try:
@@ -147,7 +145,7 @@ class AppleMusicDownloader:
             stdout, stderr = await process.communicate()
             await process.wait()  
             logging.info(f"Song downloaded successfully.")
-            await replyMessage.delete()
+            return replyMessage
         except Exception as e:
             logging.error(f"An error occurred while downloading the song: {e}")
             return
@@ -197,8 +195,8 @@ class AppleMusicDownloader:
                 logging.info(f"An error occurred: {e}")
 
     #send the song to the user; 
-    async def send_song(self, update: Update, songs):
-        replyMessage = await update.message.reply_text("Song downloaded successfully,sending to you!")
+    async def send_song(self, update: Update, songs, replyMessage):
+        await replyMessage.edit_text("Song downloaded successfully,sending to you!")
         renamed_files = await self.rename_song_file(songs)
         file_id_dict = {}
         for song_path, song_name, artist_name in renamed_files:
