@@ -45,6 +45,7 @@ class AppleMusicDownloader:
         sql_session = get_session()
         id = parse_qs(urlparse(url).query)['i'][0]
         logging.info(f"ID: {id}")
+        not_found_song = []
         try:
             song_item = sql_session.query(musicSong).filter_by(id=id).first()
             if song_item is not None:
@@ -55,13 +56,17 @@ class AppleMusicDownloader:
                 logging.info("Song sent to the user.")
                 await replyMessage.edit_text("Find out, sent to you!")
                 return
+            else:
+                song_not_found_id = id
+                not_found_song.append((song_not_found_id))
+                logging.info(f"No song item found for ID: {id}")
         except:
             pass
         finally:
             sql_session.close()
         await self.download_song(update,url,replyMessage,1)
         songs = await web_playback.get_song(session, id)
-        return await self.send_song(update, songs,replyMessage)
+        return await self.send_song(update, songs, replyMessage, not_found_song)
 
 
     #check if the album has been downloaded before from sql;
@@ -73,6 +78,7 @@ class AppleMusicDownloader:
         songs = await web_playback.get_album(session, id)
         logging.info(f"Songs: {songs}")
         all_songs_found = True
+        not_found_song = []
         try:
             not_found_count = 0  # 添加计数器
             for song_id, track_number, song_name, artist_name in songs:
@@ -82,6 +88,8 @@ class AppleMusicDownloader:
                     logging.info(f"File ID: {file_id}")
                     await update.message.reply_audio(audio=file_id)
                 else:
+                    song_not_found_id = song_id
+                    not_found_song.append((song_not_found_id))
                     logging.info(f"No song item found for ID: {song_id}")
                     not_found_count += 1  # 增加计数器的值
                     all_songs_found = False
@@ -96,7 +104,7 @@ class AppleMusicDownloader:
             sql_session.close()
 
         await self.download_song(update,url,replyMessage,not_found_count)
-        return await self.send_song(update, songs,replyMessage)
+        return await self.send_song(update, songs, replyMessage, not_found_song)
 
     #check if the playlist has been downloaded before from sql;
     async def CheckPlaylistInSql(self, update: Update ,url):
@@ -107,6 +115,7 @@ class AppleMusicDownloader:
         songs = await web_playback.get_playlist(session, id)
         logging.info(f"Songs: {songs}")
         all_songs_found = True
+        not_found_song = []
         try:
             not_found_count = 0  # 添加计数器
             for song_id, track_number, song_name, artist_name in songs:
@@ -116,6 +125,8 @@ class AppleMusicDownloader:
                     logging.info(f"File ID: {file_id}")
                     await update.message.reply_audio(audio=file_id)
                 else:
+                    song_not_found_id = song_id
+                    not_found_song.append((song_not_found_id))
                     logging.info(f"No song item found for ID: {song_id}")
                     not_found_count += 1
                     all_songs_found = False
@@ -128,9 +139,10 @@ class AppleMusicDownloader:
             logging.error(f"Error: {e}")
         finally:
             sql_session.close()
-        
+        logging.info(f"not_found_count: {not_found_count}")
+        logging.info(f"not_found_song: {not_found_song}")
         replyMessage = await self.download_song(update, url, replyMessage,not_found_count)
-        return await self.send_song(update, songs, replyMessage)
+        return await self.send_song(update, songs, replyMessage, not_found_song)
 
     #download the song;
     async def download_song(self, update: Update, url, replyMessage, not_found_count):
@@ -151,7 +163,7 @@ class AppleMusicDownloader:
             return
 
     #rename the song file;
-    async def rename_song_file(self, songs):
+    async def rename_song_file(self, songs, not_found_song):
         directory = "./Apple Music"  # Specify the directory to traverse
         renamed_files = []
         logging.info(f"songs: {songs}")
@@ -160,11 +172,17 @@ class AppleMusicDownloader:
                 if file.endswith(".m4a"):
                     # 创建新的文件名
                     for song in songs:
+                        song_id = song[0]  # 假设 song 的第一个元素是 ID
+                        if song_id not in not_found_song:  # 如果歌曲 ID 在 not_found_song 中，跳过这首歌曲
+                            continue
                         track_number = song[1]
                         song_name = song[2]
                         artist_name = f"{song[3]}"
                         new_song_name = f"{track_number} {song_name}"
-                        if new_song_name[:4] == os.path.splitext(file)[0][:4]:
+                        # 去除文件扩展名
+                        file_name_without_extension = os.path.splitext(file)[0]
+                        # 如果新的歌曲名匹配文件名
+                        if new_song_name[:4] == file_name_without_extension[:4]:
                             new_file_name = f"{new_song_name} - {artist_name}.m4a"
                             # 创建新的文件路径
                             new_file_path = os.path.join(root, new_file_name)
@@ -195,9 +213,9 @@ class AppleMusicDownloader:
                 logging.info(f"An error occurred: {e}")
 
     #send the song to the user; 
-    async def send_song(self, update: Update, songs, replyMessage):
+    async def send_song(self, update: Update, songs, replyMessage, not_found_song):
         await replyMessage.edit_text("Song downloaded successfully,sending to you!")
-        renamed_files = await self.rename_song_file(songs)
+        renamed_files = await self.rename_song_file(songs, not_found_song)
         file_id_dict = {}
         for song_path, song_name, artist_name in renamed_files:
             logging.info(f"Song_path: {song_path} Song_name: {song_name} Artist_name: {artist_name}")
@@ -222,7 +240,7 @@ class AppleMusicDownloader:
             except:
                 logging.error(f"An error occurred while sending the song")
                 break
-            
+        await replyMessage.edit_text("Song sent to you! Enjoy!")
         await replyMessage.delete()
         logging.info(f"File ID dict: {file_id_dict}")
         await self.SaveSongInfoToSql(file_id_dict, songs)
@@ -237,10 +255,11 @@ class AppleMusicDownloader:
             logging.info(f"Song name: {song_send_name} File ID: {file_id}")
             for song_id, track_number, song_name, artist_name in songs:
                 if song_send_name == song_name:
+                    song_all_name = f"{track_number} {song_name} - {artist_name}"
                     logging.info(f"Song name: {song_name} File ID: {file_id}")
                     existing_song = sql_session.query(musicSong).filter_by(id=song_id).first()
                     if existing_song is None:
-                        musicSongItem = musicSong(id=song_id, file_id=file_id)
+                        musicSongItem = musicSong(id=song_id, file_id=file_id, song_name=song_all_name)
                         logging.info(f"New song: {musicSongItem}")
                         sql_session.add(musicSongItem)
                         logging.info(f"Saveing the {song_id} song_name {song_name} file_id {file_id}saved in the database.")
