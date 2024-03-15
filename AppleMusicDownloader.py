@@ -105,8 +105,8 @@ class AppleMusicDownloader:
                     continue
             if all_songs_found:
                 await replyMessage.edit_text("Find out, senting to you!")
-                await update.message.reply_media_group(media=mediagroup)
                 await replyMessage.delete()
+                await update.message.reply_media_group(media=mediagroup)
                 return
             else:
                 await replyMessage.edit_text("Find out some songs and downloading the rest of the songs...")
@@ -147,8 +147,8 @@ class AppleMusicDownloader:
                     continue
             if all_songs_found:
                 await replyMessage.edit_text("Find out, senting to you!")
-                await update.message.reply_media_group(media=mediagroup)
                 await replyMessage.delete()
+                await update.message.reply_media_group(media=mediagroup)
                 return
             else:
                 await replyMessage.edit_text("Find out some songs, senting to you! and downloading the rest of the songs...")
@@ -237,7 +237,6 @@ class AppleMusicDownloader:
             file_id_dict = await self.send_singer_song(update, renamed_files[0][0], renamed_files[0][1], renamed_files[0][2], replyMessage)
         else:
             file_id_dict = await self.send_group_song(update, renamed_files, replyMessage, mediagroup, context)
-        await replyMessage.edit_text("Song sent to you! Enjoy!")
         await replyMessage.delete()
         logging.info(f"File ID dict: {file_id_dict}")
         await self.SaveSongInfoToSql(file_id_dict, songs)

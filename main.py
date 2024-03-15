@@ -74,5 +74,5 @@ if __name__ == '__main__':
     bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     bot.add_handler(CommandHandler("start", handleStartMessage))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handleRequest))
-    bot.run_polling()
+    bot.run_polling(timeout=40, allowed_updates=Update.ALL_TYPES)
     logging.info("Bot application started")
