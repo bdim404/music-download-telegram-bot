@@ -56,7 +56,7 @@ class WebPlayback:
         artwork_url = song_data["attributes"]["artwork"]["url"].format(w=300, h=300)
         os.makedirs('./CoverArt', exist_ok=True)
         # 下载图片
-        response = requests.get(artwork_url)
+        response = session.get(artwork_url)
         # 打开图片
         image = Image.open(BytesIO(response.content))
         # 保存图片
@@ -85,7 +85,7 @@ class WebPlayback:
             artist_name = album_data["attributes"]["artistName"]
             artwork_url = song['attributes']['artwork']['url'].format(w=300, h=300)
             # 下载图片
-            response = requests.get(artwork_url)
+            response = session.get(artwork_url)
             # 打开图片
             image = Image.open(BytesIO(response.content))
             # 保存图片
@@ -115,7 +115,7 @@ class WebPlayback:
             artist_name = attributes["artistName"]
             artwork_url = song['attributes']['artwork']['url'].format(w=300, h=300)
             # 下载图片
-            response = requests.get(artwork_url)
+            response = session.get(artwork_url)
             # 打开图片
             image = Image.open(BytesIO(response.content))
             # 保存图片
