@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*
 
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
-from AppleMusicDownloader import AppleMusicDownloader
+from AppleMusicChecker import AppleMusicChecker
 from telegram import Update,Message
 from dotenv import load_dotenv
 import logging,os,asyncio,re
@@ -63,7 +63,7 @@ async def handleRequest(update: Update, context):
 
     # Check if the message is a link including Apple Music;
     if "https://music.apple.com" in update.message.text :
-        downloader = AppleMusicDownloader()
+        downloader = AppleMusicChecker()
         await downloader.CheckLinkType(update, context)
     elif update.message.chat.type == "private":
         await update.message.reply_text("Please send me the link of the song you want to download.")
