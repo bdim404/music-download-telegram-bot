@@ -10,9 +10,9 @@ Base = declarative_base()
 class musicSong(Base):
     __tablename__ = 'musicSong'
     id = Column(String, index=True)
-    file_id = Column(String)
-    song_name = Column(String)
-    __table_args__ = (PrimaryKeyConstraint('id', 'file_id', 'song_name'),)
+    fileId = Column(String)
+    songName = Column(String)
+    __table_args__ = (PrimaryKeyConstraint('id', 'fileId', 'songName'),)
 
 # Here we use sqlite as our database, and we use sqlalchemy to connect to the database;
 engine = create_engine('sqlite:///database.db', echo=False, pool_size=10, max_overflow=10)

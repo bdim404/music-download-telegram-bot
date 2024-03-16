@@ -7,7 +7,7 @@ from PIL import Image
 from io import BytesIO
 
 # set the retrying decorator;
-def retry_if_connection_error(exception):
+def RetryIfConnectionError(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
 
 class WebPlayback:
@@ -44,81 +44,81 @@ class WebPlayback:
         session.headers.update({"authorization": f"Bearer {token}"})
         return session
 
-    @retry(retry_on_exception=retry_if_connection_error, stop_max_attempt_number=5)
-    async def get_song(self, session: requests.Session, song_id: str) -> list:
-        response = session.get(f"https://api.music.apple.com/v1/catalog/us/songs/{song_id}")
-        response_json = response.json()
-        song_data = response_json["data"][0]
-        song_id = song_data["id"]
-        song_name = song_data["attributes"]["name"]
-        artist_name = song_data["attributes"]["artistName"]
-        track_number = str(song_data["attributes"]["trackNumber"]).zfill(2)
-        artwork_url = song_data["attributes"]["artwork"]["url"].format(w=300, h=300)
+    @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=5)
+    async def GetSong(self, session: requests.Session, songId: str) -> list:
+        response = session.get(f"https://api.music.apple.com/v1/catalog/us/songs/{songId}")
+        responseJson = response.json()
+        songData = responseJson["data"][0]
+        songId = songData["id"]
+        songName = songData["attributes"]["name"]
+        artistName = songData["attributes"]["artistName"]
+        trackNumber = str(songData["attributes"]["trackNumber"]).zfill(2)
+        artworkUrl = songData["attributes"]["artwork"]["url"].format(w=300, h=300)
         os.makedirs('./CoverArt', exist_ok=True)
         # 下载图片
-        response = session.get(artwork_url)
+        response = session.get(artworkUrl)
         # 打开图片
         image = Image.open(BytesIO(response.content))
         # 保存图片
-        image.save(f"./CoverArt/{song_name}.jpg")
-        songs = [[song_id, track_number, song_name, artist_name]]
+        image.save(f"./CoverArt/{songName}.jpg")
+        songs = [[songId, trackNumber, songName, artistName]]
         return songs
 
-    @retry(retry_on_exception=retry_if_connection_error, stop_max_attempt_number=5)
-    async def get_album(self, session: requests.Session, album_id: str) -> dict:
+    @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=5)
+    async def GetAlbum(self, session: requests.Session, album_id: str) -> dict:
         response = session.get(f"https://api.music.apple.com/v1/catalog/us/albums/{album_id}")
-        response_json = response.json()
-        album_data = response_json["data"][0]
-        album_songs = album_data['relationships']['tracks']['data']
+        responseJson = response.json()
+        albumData = responseJson["data"][0]
+        albumSongs = albumData['relationships']['tracks']['data']
         os.makedirs('./CoverArt', exist_ok=True)
 
         songs = []
-        for song in album_songs:
+        for song in albumSongs:
             attributes = song.get('attributes', {})
-            play_params = attributes.get('playParams', {})
-            kind = play_params.get('kind')
+            playParams = attributes.get('playParams', {})
+            kind = playParams.get('kind')
             if kind != 'song':  # 如果 kind 不是 'song'，则跳过这首歌曲
                 continue
-            song_id = song['id']
-            song_name = song['attributes']['name']
-            track_number = str(song['attributes']['trackNumber']).zfill(2)
-            artist_name = album_data["attributes"]["artistName"]
-            artwork_url = song['attributes']['artwork']['url'].format(w=300, h=300)
+            songId = song['id']
+            songName = song['attributes']['name']
+            trackNumber = str(song['attributes']['trackNumber']).zfill(2)
+            artistName = albumData["attributes"]["artistName"]
+            artworkUrl = song['attributes']['artwork']['url'].format(w=300, h=300)
             # 下载图片
-            response = session.get(artwork_url)
+            response = session.get(artworkUrl)
             # 打开图片
             image = Image.open(BytesIO(response.content))
             # 保存图片
-            image.save(f"./CoverArt/{song_name}.jpg")
-            songs.append((song_id, track_number, song_name, artist_name))  # 将歌曲的 id 和名称作为一个元组添加到列表中
+            image.save(f"./CoverArt/{songName}.jpg")
+            songs.append((songId, trackNumber, songName, artistName))  # 将歌曲的 id 和名称作为一个元组添加到列表中
 
         return songs
 
-    @retry(retry_on_exception=retry_if_connection_error, stop_max_attempt_number=5)
-    async def get_playlist(self, session: requests.Session, playlist_id: str) -> dict:
+    @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=5)
+    async def GetPlaylist(self, session: requests.Session, playlist_id: str) -> dict:
         response = session.get(f"https://api.music.apple.com/v1/catalog/us/playlists/{playlist_id}")
-        response_json = response.json()
-        playlist_data = response_json["data"][0]
-        playlist_songs = playlist_data['relationships']['tracks']['data']
+        responseJson = response.json()
+        playlistData = responseJson["data"][0]
+        playlistDongs = playlistData['relationships']['tracks']['data']
         os.makedirs('./CoverArt', exist_ok=True)
 
         songs = []
-        for song in playlist_songs:
+        for song in playlistDongs:
             attributes = song.get('attributes', {})
-            play_params = attributes.get('playParams', {})
-            kind = play_params.get('kind')
+            playParams = attributes.get('playParams', {})
+            kind = playParams.get('kind')
             if kind != 'song':  # 如果 kind 不是 'song'，则跳过这首歌曲
                 continue
-            song_id = song['id']
-            song_name = song['attributes']['name']
-            track_number = str(song['attributes']['trackNumber']).zfill(2)
-            artist_name = attributes["artistName"]
-            artwork_url = song['attributes']['artwork']['url'].format(w=300, h=300)
+            songId = song['id']
+            songName = song['attributes']['name']
+            trackNumber = str(song['attributes']['trackNumber']).zfill(2)
+            artistName = attributes["artistName"]
+            artworkUrl = song['attributes']['artwork']['url'].format(w=300, h=300)
             # 下载图片
-            response = session.get(artwork_url)
+            response = session.get(artworkUrl)
             # 打开图片
             image = Image.open(BytesIO(response.content))
             # 保存图片
-            image.save(f"./CoverArt/{song_name}.jpg")
-            songs.append((song_id, track_number, song_name, artist_name))
+            image.save(f"./CoverArt/{songName}.jpg")
+            songs.append((songId, trackNumber, songName, artistName))
         return songs
