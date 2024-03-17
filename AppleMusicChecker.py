@@ -122,9 +122,40 @@ class AppleMusicChecker:
                     allSongsFound = False
                     continue
             if allSongsFound:
-                await replyMessage.edit_text("Find out, senting to you!")
+                if len(mediaGroup) > 10:
+                    # Split mediaGroup into groups of 10 and send each group.
+                    for i in range(0, len(mediaGroup), 10):
+                        subMediaGroup = mediaGroup[i:i+10]
+
+                        # Retry sending media group up to 5 times in case of failure.
+                        for _ in range(5):
+                            try:
+                                await update.message.reply_media_group(media=subMediaGroup)
+                                break  # If sending is successful, exit the retry loop immediately.
+                            except Exception as e:
+                                logging.error(f"Error: {e}")
+                                if 'Timeout' in str(e):
+                                    time.sleep(5)
+                                    continue
+                                break  # If the message has already been sent, exit the retry loop immediately.
+                            except:
+                                time.sleep(5)
+                else:
+                    # If mediaGroup has less than 10 items, send it directly.
+                    for _ in range(5):
+                        try:
+                            await update.message.reply_media_group(media=mediaGroup)
+                            break
+                        except Exception as e:
+                            logging.error(f"Error: {e}")
+                            if 'Timeout' in str(e):
+                                time.sleep(5)
+                                continue
+                            break
+                        except:
+                            time.sleep(5)
+
                 await replyMessage.delete()
-                await update.message.reply_media_group(media=mediaGroup)
                 return
             else:
                 await replyMessage.edit_text("Find out some songs and downloading the rest of the songs...")
@@ -165,10 +196,42 @@ class AppleMusicChecker:
                     notFoundCount += 1
                     allSongsFound = False
                     continue
+
             if allSongsFound:
-                await replyMessage.edit_text("Find out, senting to you!")
+                if len(mediaGroup) > 10:
+                    # Split mediaGroup into groups of 10 and send each group.
+                    for i in range(0, len(mediaGroup), 10):
+                        subMediaGroup = mediaGroup[i:i+10]
+
+                        # Retry sending media group up to 5 times in case of failure.
+                        for _ in range(5):
+                            try:
+                                await update.message.reply_media_group(media=subMediaGroup)
+                                break  # If sending is successful, exit the retry loop immediately.
+                            except Exception as e:
+                                logging.error(f"Error: {e}")
+                                if 'Timeout' in str(e):
+                                    time.sleep(5)
+                                    continue
+                                break  # If the message has already been sent, exit the retry loop immediately.
+                            except:
+                                time.sleep(5)
+                else:
+                    # If mediaGroup has less than 10 items, send it directly.
+                    for _ in range(5):
+                        try:
+                            await update.message.reply_media_group(media=mediaGroup)
+                            break
+                        except Exception as e:
+                            logging.error(f"Error: {e}")
+                            if 'Timeout' in str(e):
+                                time.sleep(5)
+                                continue
+                            break
+                        except:
+                            time.sleep(5)
+
                 await replyMessage.delete()
-                await update.message.reply_media_group(media=mediaGroup)
                 return
             else:
                 await replyMessage.edit_text("Find out some songs, senting to you! and downloading the rest of the songs...")
@@ -262,9 +325,8 @@ class AppleMusicChecker:
         if notFoundCount == 1:
             fileIdDict = await self.SendSingeSong(update, songs, replyMessage)
         else:
-            fileIdDict, replyMessage = await self.SendGroupSong(update, songs, replyMessage, mediaGroup, context)
+            fileIdDict = await self.SendGroupSong(update, songs, replyMessage, mediaGroup, context)
 
-        await replyMessage.delete()
         logging.info(f"File ID dict: {fileIdDict}")
 
         # Save the song info to sql;    
@@ -287,6 +349,8 @@ class AppleMusicChecker:
                 # Get the fileId;
                 fileId = message.audio.file_id
                 fileIdDict[songId] = fileId
+
+            await replyMessage.delete()
             return fileIdDict
         except:
             logging.error(f"An error occurred while sending the song")
@@ -310,16 +374,49 @@ class AppleMusicChecker:
                 media = InputMediaAudio(media=fileId)
                 mediaGroup.append(media)
                 fileIdDict[songId] = fileId
+                logging.info(f"File ID: {fileId}")
                 prosess += 1
                 await replyMessage.edit_text(f"Loading {prosess}.")
+
+                if len(mediaGroup) == 10:
+                    for _ in range(3):
+                        try:
+                            # If mediaGroup has 10 items, send them and clear mediaGroup.
+                            await update.message.reply_media_group(media=mediaGroup)
+                            mediaGroup.clear()
+                            break
+                        except Exception as e:
+                            logging.error(f"error: {e}")
+                            if 'Timeout' in str(e):
+                                time.sleep(5)
+                                continue
+                        except:
+                            time.sleep(5)
+                            continue
             except:
                 logging.error(f"An error occurred while sending the song", exc_info=True)
         logging.info(f"Media group: {mediaGroup}")
 
-        # Send to user by group.
         await replyMessage.edit_text("Loaded successfully, sending to you!")
-        await update.message.reply_media_group(media=mediaGroup)
-        return fileIdDict, replyMessage
+        # Send remaining songs in mediaGroup.
+        if mediaGroup:
+            for _ in range(3):
+                try:
+                    logging.info(f"Media group: {mediaGroup}")
+                    await update.message.reply_media_group(media=mediaGroup)
+                    break
+                except Exception as e:
+                    logging.error(f"error: {e}")
+                    if 'Timeout' in str(e):
+                        time.sleep(5)
+                        continue
+                except:
+                    logging.error(f"An error occurred while sending the song", exc_info=True)
+                    time.sleep(5)
+
+        await replyMessage.delete()
+        logging.info(f"File ID dict: {fileIdDict}")
+        return fileIdDict
 
     #stone the song info to sql;
     async def SaveSongInfoToSql(self, fileIdDict):
