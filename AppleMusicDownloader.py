@@ -1,22 +1,33 @@
-import base64
-import datetime
-import functools
-import re
-import shutil
-import subprocess
-from http.cookiejar import MozillaCookieJar
-from pathlib import Path
-from time import sleep
-from xml.etree import ElementTree
-from yt_dlp import YoutubeDL
-import ciso8601
-import m3u8
-import requests
-from pywidevine import PSSH, Cdm, Device
 from pywidevine.license_protocol_pb2 import WidevinePsshData
+from http.cookiejar import MozillaCookieJar
+from pywidevine import PSSH, Cdm, Device
+from xml.etree import ElementTree
+from urllib.parse import quote
+from yt_dlp import YoutubeDL
+from retrying import retry
+from pathlib import Path
+from io import BytesIO
+from time import sleep
+from PIL import Image
+import subprocess
+import functools
+import datetime
+import ciso8601
+import requests
+import base64
+import shutil
+import m3u8
+import re
+import os
 
+# Set the retrying decorator;
+def RetryIfConnectionError(exception):
+    return isinstance(exception, requests.exceptions.ConnectionError)
+
+# Set the Apple Music API hostname; 
 AMP_API_HOSTNAME = "https://amp-api.music.apple.com"
 
+# Set the Apple Music Storefront IDs;
 STOREFRONT_IDS = {
     "AE": "143481-2,32",
     "AG": "143540-2,32",
@@ -176,6 +187,7 @@ STOREFRONT_IDS = {
 }
 
 class Downloader:
+    # Set the default values of the class;
     def __init__(
         self,
         final_path: Path = None,
@@ -183,7 +195,6 @@ class Downloader:
         cookies_location: Path = None,
         wvd_location: Path = None,
         ffmpeg_location: str = None,
-        nm3u8dlre_location: str = None,
         template_folder_album: str = None,
         template_folder_compilation: str = None,
         template_file_single_disc: str = None,
@@ -199,7 +210,6 @@ class Downloader:
         self.cookies_location = Path("./cookies.txt")
         self.wvd_location = Path("./device.wvd")
         self.ffmpeg_location = "ffmpeg"
-        self.nm3u8dlre_location = "N_m3u8DL-RE"
         self.template_folder_album = "{album_artist}/{album}"
         self.template_folder_compilation = "Compilations/{album}"
         self.template_file_single_disc = "{track:02d} {title}"
@@ -209,6 +219,7 @@ class Downloader:
         self.truncate = 50
         self.songs_flavor = "32:ctrp64" if songs_heaac else "28:ctrp256"
 
+    # Set the setup_session method;
     def setup_session(self) -> None:
         cookies = MozillaCookieJar(self.cookies_location)
         cookies.load(ignore_discard=True, ignore_expires=True)
@@ -243,90 +254,12 @@ class Downloader:
         self.country = self.session.cookies.get_dict()["itua"]
         self.storefront = STOREFRONT_IDS[self.country.upper()]
 
+    # Set the setup_cdm method;
     def setup_cdm(self) -> None:
         self.cdm = Cdm.from_device(Device.load(self.wvd_location))
         self.cdm_session = self.cdm.open()
 
-    def get_song(self, song_id: str) -> dict:
-        song_response = self.session.get(
-            f"{AMP_API_HOSTNAME}/v1/catalog/{self.country}/songs/{song_id}"
-        )
-        if song_response.status_code != 200:
-            raise Exception(f"Failed to get song: {song_response.text}")
-        return song_response.json()["data"][0]
-
-    def get_album(self, album_id: str) -> dict:
-        album_response = self.session.get(
-            f"{AMP_API_HOSTNAME}/v1/catalog/{self.country}/albums/{album_id}"
-        )
-        if album_response.status_code != 200:
-            raise Exception(f"Failed to get album: {album_response.text}")
-        return album_response.json()["data"][0]
-
-    def get_playlist(self, playlist_id: str) -> dict:
-        playlist_response = self.session.get(
-            f"{AMP_API_HOSTNAME}/v1/catalog/{self.country}/playlists/{playlist_id}",
-            params={
-                "limit[tracks]": 300,
-            },
-        )
-        if playlist_response.status_code != 200:
-            raise Exception(f"Failed to get playlist: {playlist_response.text}")
-
-        return playlist_response.json()["data"][0]
-
-    def get_playlists_additional_tracks(self, next_uri) -> dict:
-        extending = True
-        additional_tracks = []
-
-        while extending:
-            playlist_tracks_response = self.session.get(f"{AMP_API_HOSTNAME}{next_uri}")
-            playlist_tracks_response_json = playlist_tracks_response.json()
-            extending = "next" in playlist_tracks_response_json
-
-            playlist_tracks_response_json_data = playlist_tracks_response_json["data"]
-            # Doing a push to the array we are going to download the songs from
-            additional_tracks.extend(playlist_tracks_response_json_data)
-
-            if extending:
-                next_uri = playlist_tracks_response_json["next"]
-                # I don't want to upset any kind of rate limits so lets give it a few seconds, if you have any clue on what the rate limits are adjust this to match them closely.
-                # 3 Seconds to be safe, we can afford it since we only need to do it once
-                sleep(3)
-
-        return additional_tracks
-
-    def get_download_queue(self, url: str) -> tuple[str, list[dict]]:
-        download_queue = []
-        url_regex_result = re.search(
-            r"/([a-z]{2})/(album|playlist|song|music-video)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)",
-            url,
-        )
-        catalog_resource_type = url_regex_result.group(2)
-        catalog_id = url_regex_result.group(5) or url_regex_result.group(4)
-        if catalog_resource_type == "song" or url_regex_result.group(5):
-            download_queue.append(self.get_song(catalog_id))
-        elif catalog_resource_type == "album":
-            download_queue.extend(
-                self.get_album(catalog_id)["relationships"]["tracks"]["data"]
-            )
-        elif catalog_resource_type == "playlist":
-            playlist = self.get_playlist(catalog_id)
-            tracks_response = playlist["relationships"]["tracks"]
-
-            download_queue.extend(tracks_response["data"])
-
-            if "next" not in tracks_response:
-                return catalog_resource_type, download_queue
-            download_queue.extend(
-                self.get_playlists_additional_tracks(tracks_response["next"])
-            )
-
-            return catalog_resource_type, download_queue
-        else:
-            raise Exception("Invalid URL")
-        return catalog_resource_type, download_queue
-
+    # Set the get_webplayback method;
     def get_webplayback(self, track_id: str) -> dict:
         webplayback_response = self.session.post(
             "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/webPlayback",
@@ -339,23 +272,25 @@ class Downloader:
             raise Exception(f"Failed to get webplayback: {webplayback_response.text}")
         return webplayback_response.json()["songList"][0]
 
+    # Set the get_stream_url_song method;
     def get_stream_url_song(self, webplayback: dict) -> str:
         return next(
             i for i in webplayback["assets"] if i["flavor"] == self.songs_flavor
         )["URL"]
 
+    # Set the get_encrypted_location_audio method;
     def get_encrypted_location_audio(self, track_id: str) -> Path:
         return self.temp_path / f"{track_id}_encrypted_audio.m4a"
 
+    # Set the get_decrypted_location_audio method;
     def get_decrypted_location_audio(self, track_id: str) -> Path:
         return self.temp_path / f"{track_id}_decrypted_audio.m4a"
 
+    # Set the get_fixed_location method;
     def get_fixed_location(self, track_id: str, file_extension: str) -> Path:
         return self.temp_path / f"{track_id}_fixed{file_extension}"
 
-    def get_cover_location_song(self, final_location: Path) -> Path:
-        return final_location.parent / f"Cover.{self.cover_format}"
-
+    # Set the get_license_b64 method;
     def get_license_b64(self, challenge: str, track_uri: str, track_id: str) -> str:
         license_b64_response = self.session.post(
             "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/acquireWebPlaybackLicense",
@@ -372,6 +307,7 @@ class Downloader:
             raise Exception(f"Failed to get license_b64: {license_b64_response.text}")
         return license_b64_response.json()["license"]
 
+    # Set the get_decryption_key_song method;
     def get_decryption_key_song(self, stream_url: str, track_id: str) -> str:
         track_uri = m3u8.load(stream_url).keys[0].uri
         widevine_pssh_data = WidevinePsshData()
@@ -387,6 +323,7 @@ class Downloader:
             i for i in self.cdm.get_keys(self.cdm_session) if i.type == "CONTENT"
         ).key.hex()
 
+    # Set the get_tags_song method;
     def get_tags_song(self, webplayback: dict) -> dict:
         flavor = next(
             i for i in webplayback["assets"] if i["flavor"] == self.songs_flavor
@@ -430,6 +367,7 @@ class Downloader:
         }
         return tags
 
+    # Set the get_sanitized_string method;
     def get_sanitized_string(self, dirty_string: str, is_folder: bool) -> str:
         dirty_string = re.sub(r'[\\/:*?"<>|;]', "_", dirty_string)
         if is_folder:
@@ -441,6 +379,7 @@ class Downloader:
                 dirty_string = dirty_string[: self.truncate - 4]
         return dirty_string.strip()
 
+    # Set the get_final_location method;
     def get_final_location(self, tags: dict) -> Path:
         if tags.get("album"):
             final_location_folder = (
@@ -469,11 +408,13 @@ class Downloader:
             *final_location_file
         )
 
+    # Set the sanitize_date method;
     @staticmethod
     def sanitize_date(date: str, template_date: str):
         datetime_obj = ciso8601.parse_datetime(date)
         return datetime_obj.strftime(template_date)
 
+    # Set the fixup_song_ffmpeg method;
     def fixup_song_ffmpeg(
         self, encrypted_location: Path, decryption_key: str, fixed_location: Path
     ) -> None:
@@ -496,15 +437,19 @@ class Downloader:
             check=True,
         )
 
+    # Set the move_to_final_location method;
     def move_to_final_location(
         self, fixed_location: Path, final_location: Path
     ) -> None:
         final_location.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(fixed_location, final_location)
+        return final_location
 
+    # Set the cleanup_temp_path method;
     def cleanup_temp_path(self) -> None:
         shutil.rmtree(self.temp_path)
 
+    # Set the download_ytdlp method;
     def download_ytdlp(self, encrypted_location: Path, stream_url: str) -> None:
         with YoutubeDL(
             {
@@ -517,3 +462,64 @@ class Downloader:
             }
         ) as ydl:
             ydl.download(stream_url)
+
+    # Set the get_cover_url method;
+    def get_cover_url(self, webplayback: dict) -> str:
+        return (
+            webplayback["artwork-urls"]["default"]["url"].rsplit("/", 1)[0]
+            + f"/300x300bb.jpg"
+        )
+
+    # Set the get_cover method;
+    def get_cover(self, cover_url):
+        response = requests.get(cover_url)
+        return response.content
+
+    # Set the save_cover method;
+    def save_cover(self, tags, cover_url):
+        os.makedirs('./CoverArt', exist_ok=True)
+        cover_bytes = self.get_cover(cover_url)
+        image = Image.open(BytesIO(cover_bytes))
+        title = tags['title']
+        print(title)
+        safe_title = re.sub(r'[\\/*?:"<>|]', "", title)
+        image.save(f"./CoverArt/{safe_title}.jpg")
+        return f"./CoverArt/{safe_title}.jpg"
+
+    # Set the get_song method;
+    @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=5)
+    async def GetAlbum(self, album_id: str) -> dict:
+        response = self.session.get(f"https://api.music.apple.com/v1/catalog/us/albums/{album_id}")
+        responseJson = response.json()
+        albumData = responseJson["data"][0]
+        albumSongs = albumData['relationships']['tracks']['data']
+
+        songs = []
+        for song in albumSongs:
+            attributes = song.get('attributes', {})
+            playParams = attributes.get('playParams', {})
+            kind = playParams.get('kind')
+            if kind != 'song':  # if kind is not 'song', skip this song.
+                continue
+            songId = song['id']
+            songs.append((songId))  # put the id and name of the song as a tuple into the list.
+        return songs
+
+    # Set the get_album method;
+    @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=5)
+    async def GetPlaylist(self, playlist_id: str) -> dict:
+        response = self.session.get(f"https://api.music.apple.com/v1/catalog/us/playlists/{playlist_id}")
+        responseJson = response.json()
+        playlistData = responseJson["data"][0]
+        playlistDongs = playlistData['relationships']['tracks']['data']
+
+        songs = []
+        for song in playlistDongs:
+            attributes = song.get('attributes', {})
+            playParams = attributes.get('playParams', {})
+            kind = playParams.get('kind')
+            if kind != 'song':  # if kind is not 'song', skip this song.
+                continue
+            songId = song['id']
+            songs.append((songId)) # put the id and name of the song as a tuple into the list.
+        return songs

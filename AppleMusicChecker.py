@@ -1,22 +1,30 @@
-import logging,os,asyncio,shutil,re,glob,subprocess
-from AppleMusicWebPlayback import WebPlayback
+from AppleMusicDownloader import Downloader
 from urllib.parse import urlparse, parse_qs
+from telegram import Update, InputMediaAudio
+from telegram.ext import CallbackContext
+from Database import musicSong, get_session
 from sqlalchemy.orm import sessionmaker
-from db import musicSong, get_session
 from get_cover_art import CoverFinder
 from pydub import AudioSegment
-from telegram import Update,InputMediaAudio
-from telegram.ext import CallbackContext
-import time
 from pathlib import Path
-from AppleMusicDownloader import Downloader
-import json
+import subprocess, re
+import time, shutil
+import json, glob
+import requests
+import asyncio
+import logging
+import os
 
-
-web_playback = WebPlayback()
-session = web_playback.setup_session("cookies.txt")
+# Configure the downloader;
+downloader = Downloader()
+# Configure the session;
+downloader.setup_session()
+# Configure the CDM;
+downloader.setup_cdm()
 
 class AppleMusicChecker:
+
+    # Check the link type;
     async def CheckLinkType(self, update: Update, context):
         logging.info("Checking the link type...")
         url = update.message.text
@@ -27,9 +35,11 @@ class AppleMusicChecker:
         catalog_resource_type = url_regex_result.group(2)
         catalog_id = url_regex_result.group(5) or url_regex_result.group(4)
 
+        # Check the link type;
         if catalog_resource_type == "song" or url_regex_result.group(5):
             logging.info("The link is a song.")
             await self.CheckSongInSql(update, url, context)
+        # Ignone music-video;
         elif catalog_resource_type == "music-video":
             logging.info("The link is a music-video.")
             await update.message.reply_text("Sorry, I can't download music vedio.")
@@ -37,6 +47,7 @@ class AppleMusicChecker:
         elif catalog_resource_type == "album":
             logging.info("The link is an album.")
             await self.CheckAlbumInSql(update, url, context)
+        # Ignone playlist in group chat;
         elif catalog_resource_type == "playlist":
             if update.message.chat.type == "private":
                 logging.info("The link is a playlist.")
@@ -46,7 +57,7 @@ class AppleMusicChecker:
         else:
             raise Exception("Invalid URL")
 
-    #check if the song has been downloaded before from sql;
+    # Check if the song has been downloaded before from sql;
     async def CheckSongInSql(self, update: Update, url, context):
         replyMessage = await update.message.reply_text("Finding the song in the database...")
         sql_session = get_session()
@@ -54,6 +65,7 @@ class AppleMusicChecker:
         logging.info(f"ID: {id}")
         notFoundSong = []
         mediaGroup = []
+        # Check if the song has been downloaded before from sql;
         try:
             notFoundCount = 0
             songItem = sql_session.query(musicSong).filter_by(id=id).first()
@@ -69,42 +81,44 @@ class AppleMusicChecker:
             else:
                 songNotFoundId = id
                 notFoundCount += 1
+                # Remember the song that was not found;
                 notFoundSong.append((songNotFoundId))
                 logging.info(f"No song item found for ID: {id}")
         except:
             pass
         finally:
             sql_session.close()
-        await self.DownloadSong(update, notFoundSong, replyMessage, notFoundCount)
-        songs = await web_playback.GetSong(session, id)
-        return await self.SendSong(update, songs, replyMessage, notFoundSong, notFoundCount, context, mediaGroup)
+        await self.DownloadSong(update, replyMessage, notFoundSong, notFoundCount, context, mediaGroup)
 
 
-    #check if the album has been downloaded before from sql;
+    # Check if the album has been downloaded before from sql;
     async def CheckAlbumInSql(self, update: Update, url, context):
         replyMessage = await update.message.reply_text("Finding the album in the database...")
         sql_session = get_session()
         id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
         logging.info(f"ID: {id}")
-        songs = await web_playback.GetAlbum(session, id)
+        # Get the songs info;
+        songs = await downloader.GetAlbum(id)
         logging.info(f"Songs: {songs}")
         allSongsFound = True
         notFoundSong = []
         try:
             mediaGroup = []
-            notFoundCount = 0  # 添加计数器
-            for songId, trackNumber, songName, artistName in songs:
+            notFoundCount = 0  
+            for songId in songs:
                 songItem = sql_session.query(musicSong).filter_by(id=songId).first()
                 if songItem is not None:
                     fileId = songItem.fileId
                     logging.info(f"File ID: {fileId}")
+                    # Use fileId build InputMediaAudio, and wait for the next step to send to user.
                     media = InputMediaAudio(media=fileId)
                     mediaGroup.append(media)
                 else:
+                    # Remember the song that was not found;
                     songNotFoundId = songId
                     notFoundSong.append((songNotFoundId))
                     logging.info(f"No song item found for ID: {songId}")
-                    notFoundCount += 1  # 增加计数器的值
+                    notFoundCount += 1  
                     allSongsFound = False
                     continue
             if allSongsFound:
@@ -119,30 +133,32 @@ class AppleMusicChecker:
         finally:
             sql_session.close()
 
-        await self.DownloadSong(update,notFoundSong,replyMessage,notFoundCount)
-        return await self.SendSong(update, songs, replyMessage, notFoundSong, notFoundCount, mediaGroup, context)
+        await self.DownloadSong(update, replyMessage, notFoundSong, notFoundCount, context, mediaGroup)
 
-    #check if the playlist has been downloaded before from sql;
+    # Check if the playlist has been downloaded before from sql;    
     async def CheckPlaylistInSql(self, update: Update, url, context):
         replyMessage = await update.message.reply_text("Finding the playlist in the database...")
         sql_session = get_session()
         id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
         logging.info(f"ID: {id}")
-        songs = await web_playback.GetPlaylist(session, id)
+        # Get the songs info;
+        songs = await downloader.GetPlaylist(id)
         logging.info(f"Songs: {songs}")
         allSongsFound = True
         notFoundSong = []
         try:
             mediaGroup = []
             notFoundCount = 0  # 添加计数器
-            for songId, trackNumber, songName, artistName in songs:
+            for songId in songs:
                 songItem = sql_session.query(musicSong).filter_by(id=songId).first()
                 if songItem is not None:
                     fileId = songItem.fileId
                     logging.info(f"File ID: {fileId}")
+                    # Use fileId build InputMediaAudio, and wait for the next step to send to user.
                     media = InputMediaAudio(media=fileId)
                     mediaGroup.append(media)
                 else:
+                    # Remember the song that was not found;
                     songNotFoundId = songId
                     notFoundSong.append((songNotFoundId))
                     logging.info(f"No song item found for ID: {songId}")
@@ -160,86 +176,70 @@ class AppleMusicChecker:
             logging.error(f"Error: {e}")
         finally:
             sql_session.close()
-        logging.info(f"notFoundCount: {notFoundCount}")
         logging.info(f"notFoundSong: {notFoundSong}")
-        replyMessage = await self.DownloadSong(update, notFoundSong, replyMessage,notFoundCount)
-        return await self.SendSong(update, songs, replyMessage, notFoundSong, notFoundCount, mediaGroup, context)
+        await self.DownloadSong(update, replyMessage, notFoundSong, notFoundCount, context, mediaGroup)
 
-    #download the song;
-    async def DownloadSong(self, update: Update, notFoundSong, replyMessage, notFoundCount):
+    # Download the song;
+    async def DownloadSong(self, update: Update, replyMessage, notFoundSong, notFoundCount, context, mediaGroup):
+        notFoundCountTotal = 0
         if notFoundCount == 1:
             await replyMessage.edit_text("Donwloading the song...")
         else:
-            await replyMessage.edit_text(f"Donwloading {notFoundCount} songs...")
-        try:
-            downloader = Downloader()
-        except Exception as e:
-            logging.error(f"Failed to create a Downloader object: {e}")
-            return
-        try:
-            downloader.setup_session()
-        except Exception as e:
-            logging.error(f"Failed to setup a session: {e}")
-            return
-        try:
-            downloader.setup_cdm()
-        except Exception as e:
-            logging.error(f"Failed to setup CDM: {e}")
-            return
+            await replyMessage.edit_text(f"Donwloading {notFoundCountTotal}/{notFoundCount} songs...")
+
+        # Download the not found song;
+        songs = []
         for track_id in notFoundSong:
+            logging.info(f"Downloading song {track_id}...")
             try:
+                # Get the song info;
                 webplayback = downloader.get_webplayback(track_id)
+
+                # Get the cover art;
+                cover_url = downloader.get_cover_url(webplayback)
+
+                # Get the tags;
                 tags = downloader.get_tags_song(webplayback)
+
+                # Save the cover art;
+                save_cover = downloader.save_cover(tags, cover_url)
                 final_location = downloader.get_final_location(tags)
+
+                # Add the song info to the list;
+                songs.append((track_id, final_location, save_cover, tags['title'], tags['artist']))
+                logging.info(f"track_id: {track_id}, final_location: {final_location}, save_cover: {save_cover}, title: {tags['title']}, artistName: {tags['artist']}")
+
+                # Get the stream url;
                 stream_url = downloader.get_stream_url_song(webplayback)
+
+                # Get the decryption key;
                 decryption_key = downloader.get_decryption_key_song(stream_url, track_id)
+
+                # Download the song;
                 encrypted_location = downloader.get_encrypted_location_audio(track_id)
                 downloader.download_ytdlp(encrypted_location, stream_url)
+
+                # Decrypt the song;
                 decrypted_location = downloader.get_decrypted_location_audio(track_id)            
                 fixed_location = downloader.get_fixed_location(track_id, ".m4a")
                 downloader.fixup_song_ffmpeg(encrypted_location, decryption_key, fixed_location)
+
+                # Move the song to the final location;
                 downloader.move_to_final_location(fixed_location, final_location)
+                notFoundCountTotal += 1
+
+                # Update the message;
+                await replyMessage.edit_text(f"Donwloading {notFoundCountTotal}/{notFoundCount} songs...")
+
             except Exception as e:
                 logging.error(f"Failed to get song {track_id}: {e}")
+
         logging.info("Downloaded the song.")
         downloader.cleanup_temp_path()
+        await self.SendSong(update, songs, replyMessage, notFoundCount, mediaGroup, context)
 
-    #rename the song file;
-    async def RenameSongFile(self, songs, notFoundSong):
-        directory = "./Apple Music"  # Specify the directory to traverse
-        renamedFiles = []
-        logging.info(f"songs: {songs}")
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                if file.endswith(".m4a"):
-                    # 创建新的文件名
-                    for song in songs:
-                        songId = song[0]  # 假设 song 的第一个元素是 ID
-                        if songId not in notFoundSong:  # 如果歌曲 ID 在 notFoundSong 中，跳过这首歌曲
-                            continue
-                        trackNumber = song[1]
-                        songName = song[2]
-                        artistName = f"{song[3]}"
-                        new_songName = f"{trackNumber} {songName}"
-                        # 去除文件扩展名
-                        file_name_without_extension = os.path.splitext(file)[0]
-                        # 如果新的歌曲名匹配文件名
-                        if new_songName[:4] == file_name_without_extension[:4]:
-                            new_file_name = f"{new_songName} - {artistName}.m4a"
-                            # 创建新的文件路径
-                            new_file_path = os.path.join(root, new_file_name)
-                            # 创建旧的文件路径
-                            old_file_path = os.path.join(root, file)
-                            # 重命名文件
-                            os.rename(old_file_path, new_file_path)
-                            # 将新的文件路径添加到列表中
-                            logging.info(f"New file path: {new_file_path}, Song name: {songName}, Artist name: {artistName}")
-                            renamedFiles.append((new_file_path,songName,artistName))
-                            break
-        logging.info(f"Renamed files: {renamedFiles}")
-        return renamedFiles
 
-    #delete the song file;
+    # Delete the song file;
     async def DeleteSongFile(self):
         directories = ["./Apple Music", "./temp", "./CoverArt"]
         for directory in directories:
@@ -254,95 +254,94 @@ class AppleMusicChecker:
             except Exception as e:
                 logging.info(f"An error occurred: {e}")
 
-    #send the song to the user; 
-    async def SendSong(self, update: Update, songs, replyMessage, notFoundSong, notFoundCount, mediaGroup, context):
-        await replyMessage.edit_text("Song downloaded successfully,sending to you!")
-        renamedFiles = await self.RenameSongFile(songs, notFoundSong)
+    # Send the song to the user; 
+    async def SendSong(self, update: Update, songs, replyMessage, notFoundCount, mediaGroup, context):
+        await replyMessage.edit_text("Download successfully, sending to you! ")
+
+        # Based on the number of songs, send the song to the user;
         if notFoundCount == 1:
-            fileIdDict = await self.SendSingeSong(update, renamedFiles[0][0], renamedFiles[0][1], renamedFiles[0][2], replyMessage)
+            fileIdDict = await self.SendSingeSong(update, songs, replyMessage)
         else:
-            fileIdDict = await self.SendGroupSong(update, renamedFiles, replyMessage, mediaGroup, context)
+            fileIdDict, replyMessage = await self.SendGroupSong(update, songs, replyMessage, mediaGroup, context)
+
         await replyMessage.delete()
         logging.info(f"File ID dict: {fileIdDict}")
-        await self.SaveSongInfoToSql(fileIdDict, songs)
+
+        # Save the song info to sql;    
+        await self.SaveSongInfoToSql(fileIdDict)
     
-    async def SendSingeSong(self, update: Update, songPath, songName, artistName, replyMessage):
-        logging.info(f"songPath: {songPath} songName: {songName} artistName: {artistName}")
+    # Send the single song to the user;
+    async def SendSingeSong(self, update: Update, songs, replyMessage):
         try:
-            # 获取音乐的时长
-            audiotime = AudioSegment.from_file(songPath)
-            duration = audiotime.duration_seconds
-            # 遍历当前目录./CoverArt中的jpg文件
-            for file in glob.glob(f"./CoverArt/*.jpg"):
-                # 获取文件名 并与songName进行比较
-                filename, _ = os.path.splitext(os.path.basename(file))
-                if filename == songName:
-                    logging.info(f"Checking files: {filename},Song name: {songName}")
-                    coverArtPath = file
-                    logging.info(f"Cover art path: {coverArtPath}")
-                    break
-            logging.info(f"audio={songPath}, thumbnail={coverArtPath}, duration={duration}, performer={artistName}, title={songName}")
-            message = await update.message.reply_audio(audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
-            fileId = message.audio.file_id
-            os.remove(coverArtPath)
-            songSendName = songName
-            return {songSendName: fileId}
+            fileIdDict = {}
+            for songId, songPath, coverArtPath, songName, artistName in songs:
+               
+                # Get the audio duration;
+                audiotime = AudioSegment.from_file(songPath)
+                duration = audiotime.duration_seconds
+                
+                # Send the song to the user;
+                logging.info(f"audio={songPath}, thumbnail={coverArtPath}, duration={duration}, performer={artistName}, title={songName}")
+                message = await update.message.reply_audio(audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
+               
+                # Get the fileId;
+                fileId = message.audio.file_id
+                fileIdDict[songId] = fileId
+            return fileIdDict
         except:
             logging.error(f"An error occurred while sending the song")
             return {}
 
-    async def SendGroupSong(self, update: Update, renamedFiles, replyMessage, mediaGroup, context):
+    # Send the group song to the user;
+    async def SendGroupSong(self, update: Update, songs, replyMessage, mediaGroup, context):
         fileIdDict = {}
-        for songPath, songName, artistName in renamedFiles:
+        prosess = 0
+        for songId, songPath, coverArtPath, songName, artistName in songs:
             try:
-                # 获取音乐的时长
+                # Get the audio duration;
                 audio = AudioSegment.from_file(songPath)
                 duration = audio.duration_seconds
-                # 遍历当前目录./CoverArt中的jpg文件
-                for file in glob.glob(f"./CoverArt/*.jpg"):
-                    # 获取文件名 并与songName进行比较
-                    filename, _ = os.path.splitext(os.path.basename(file))
-                    if filename == songName:
-                        logging.info(f"Checking files: {filename},Song name: {songName}")
-                        coverArtPath = file
-                        logging.info(f"Cover art path: {coverArtPath}")
-                # 先将音频一个一个发送到channel，然后获取fileId
+
+                # Send to channel one byu one，and get fileId.
                 message = await context.bot.send_audio(chat_id='@applemusicachive', audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
                 fileId = message.audio.file_id
-                # 使用fileId创建InputMediaAudio对象
+
+                # Use fileId build InputMediaAudio.
                 media = InputMediaAudio(media=fileId)
                 mediaGroup.append(media)
-                songSendName = songName
-                fileIdDict[songSendName] = fileId
+                fileIdDict[songId] = fileId
+                prosess += 1
+                await replyMessage.edit_text(f"Loading {prosess}.")
             except:
                 logging.error(f"An error occurred while sending the song", exc_info=True)
         logging.info(f"Media group: {mediaGroup}")
-        # 通过发送group的方式统一发送给用户
+
+        # Send to user by group.
+        await replyMessage.edit_text("Loaded successfully, sending to you!")
         await update.message.reply_media_group(media=mediaGroup)
-        return fileIdDict
+        return fileIdDict, replyMessage
 
     #stone the song info to sql;
-    async def SaveSongInfoToSql(self, fileIdDict, songs):
+    async def SaveSongInfoToSql(self, fileIdDict):
         sql_session = get_session()
-        logging.info(f"songs: {songs}")
-        logging.info("save song info to sql")
+
         logging.info(f"song info: {fileIdDict}")
-        for songSendName, fileId in fileIdDict.items():
-            logging.info(f"Song name: {songSendName} File ID: {fileId}")
-            for songId, trackNumber, songName, artistName in songs:
-                if songSendName == songName:
-                    song_all_name = f"{trackNumber} {songName} - {artistName}"
-                    logging.info(f"Song name: {songName} File ID: {fileId}")
-                    existing_song = sql_session.query(musicSong).filter_by(id=songId).first()
-                    if existing_song is None:
-                        musicSongItem = musicSong(id=songId, fileId=fileId, songName=song_all_name)
-                        logging.info(f"New song: {musicSongItem}")
-                        sql_session.add(musicSongItem)
-                        logging.info(f"Saveing the {songId} songName {songName} fileId {fileId}saved in the database.")
-                    else:
-                        logging.info(f"Song with ID {songId} already exists, skipping")
+
+        # Get the song info;    
+        for songId, fileId in fileIdDict.items():
+            # Check if the song exists;
+            existing_song = sql_session.query(musicSong).filter_by(id=songId).first()
+            if existing_song is None:
+                musicSongItem = musicSong(id=songId, fileId=fileId)
+                logging.info(f"New song: {musicSongItem}")
+                sql_session.add(musicSongItem)
+                logging.info(f"Saveing the {songId} fileId {fileId}saved in the database.")
+            else:
+                logging.info(f"Song with ID {songId} already exists, skipping")
         logging.info("Song saved in the database.")
 
         sql_session.commit()
         sql_session.close()
+
+        # Delete the song file;
         await self.DeleteSongFile()
