@@ -216,6 +216,7 @@ class AppleMusicChecker:
                                 break  # If the message has already been sent, exit the retry loop immediately.
                             except:
                                 time.sleep(5)
+                                continue
                 else:
                     # If mediaGroup has less than 10 items, send it directly.
                     for _ in range(5):
@@ -379,7 +380,7 @@ class AppleMusicChecker:
                 await replyMessage.edit_text(f"Loading {prosess}.")
 
                 if len(mediaGroup) == 10:
-                    for _ in range(3):
+                    for _ in range(5):
                         try:
                             # If mediaGroup has 10 items, send them and clear mediaGroup.
                             await update.message.reply_media_group(media=mediaGroup)
@@ -413,6 +414,7 @@ class AppleMusicChecker:
                 except:
                     logging.error(f"An error occurred while sending the song", exc_info=True)
                     time.sleep(5)
+                    continue
 
         await replyMessage.delete()
         logging.info(f"File ID dict: {fileIdDict}")
