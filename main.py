@@ -28,6 +28,7 @@ try:
     ALLOWED_TELEGRAM_USER_IDS = list(map(int, os.getenv("ALLOWED_TELEGRAM_USER_IDS").split(",")))
 except:
     ALLOWED_TELEGRAM_USER_IDS = []
+
 logging.info("Environment variables loaded.")
 
 
