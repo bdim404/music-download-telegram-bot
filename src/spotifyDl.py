@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
+from config import SPOTIPY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, TELEGRAM_CHANNEL_ID
 import time, requests, yt_dlp, json, sys, logging, spotipy
-from config import SPOTIPY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 from spotipy.oauth2 import SpotifyClientCredentials
 from Database import spotifyMusic, get_session
 from telegram import Update, InputMediaAudio
@@ -122,7 +122,10 @@ async def CheckSongsInSql(update: Update, songsList, replyMessage, context):
         
 
 async def downloadSongs(update: Update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context):
-    await replyMessage.edit_text(f"Downloading {notFoundCount} songs from YouTube...")
+    if notFoundCount == 1:
+        return await replyMessage.edit_text("Downloading song from YouTube...")
+    else:
+        await replyMessage.edit_text(f"Downloading {notFoundCount} songs from YouTube...")
     downloadedCount = 0
     downloadedSongs = []
     for i, song in enumerate(notfoundsongs, start=1):
@@ -152,7 +155,8 @@ async def downloadSongs(update: Update, mediaGroup, notfoundsongs, notFoundCount
         # Download cover
         response = requests.get(song['cover'])
         img = Image.open(BytesIO(response.content))
-        coverPath = f"./CoverArt/{song['name']}.jpg"
+        safe_song_name = song['name'].replace("/", "-")  # Replace / with -
+        coverPath = f"./CoverArt/{safe_song_name}.jpg"
         img.save(coverPath)
 
         # Add song info to downloadedSongs
@@ -164,9 +168,19 @@ async def downloadSongs(update: Update, mediaGroup, notfoundsongs, notFoundCount
             'spotifyId': song['spotifyId']
         })
         downloadedCount += 1
-        await replyMessage.edit_text(f"Downloaded {downloadedCount} songs from YouTube...")
-    await replyMessage.edit_text("Downloaded successfully, sending to you!")
-    return await sendSong(update, mediaGroup, downloadedSongs, notFoundCount, replyMessage, context)
+        await replyMessage.edit_text(f"Downloaded {downloadedCount}/{notFoundCount} songs from YouTube...")
+
+        # If 10 songs have been downloaded, send them and clear the list
+        if downloadedCount % 10 == 0:
+            await sendSong(update, mediaGroup, downloadedSongs, downloadedCount, replyMessage, context)
+            downloadedSongs = []
+
+    # Send any remaining songs
+    if downloadedSongs:
+        await sendSong(update, mediaGroup, downloadedSongs, downloadedCount, replyMessage, context)
+
+    await delete_files()
+    return 
 
 async def sendSong(update, mediaGroup, downloadedSongs, notFoundCount, replyMessage, context):
 
@@ -178,7 +192,7 @@ async def sendSong(update, mediaGroup, downloadedSongs, notFoundCount, replyMess
 
     logging.info(f"File ID dict: {fileIdDict}")
 
-    await delete_files()
+
     # Save the song info to sql;    
     await SaveSongInfoToSql(fileIdDict)
 
@@ -206,6 +220,28 @@ async def sendSingeSong(update, downloadedSongs, replyMessage):
 async def sendGroupSongS(update, downloadedSongs, replyMessage, mediaGroup, context):
     fileIdDict = {}
     prosess = 0
+
+    if len(mediaGroup) > 11:
+        # Split mediaGroup into groups of 10 and send each group.
+        for i in range(0, len(mediaGroup), 10):
+            subMediaGroup = mediaGroup[i:i+10]
+
+            # Retry sending media group up to 5 times in case of failure.
+            for _ in range(5):
+                try:
+                    await update.message.reply_media_group(media=subMediaGroup)
+                    break
+                except Exception as e:
+                    logging.error(f"Error: {e}")
+                    if 'Timeout' in str(e):
+                        time.sleep(5)
+                        continue
+                    break
+                except:
+                    time.sleep(5)
+        mediaGroup.clear()
+
+
     for song in downloadedSongs:
         try:
             songPath = song['songPath']
@@ -220,8 +256,16 @@ async def sendGroupSongS(update, downloadedSongs, replyMessage, mediaGroup, cont
             duration = audio.duration_seconds
 
             # Send the song to the user
-            message = await context.bot.send_audio(chat_id='@applemusicachive', audio=songPath, thumbnail=coverPath, duration=duration, performer=artistName, title=songName)
-            fileId = message.audio.file_id
+            for _ in range(5):
+                try:
+                    message = await context.bot.send_audio(chat_id=TELEGRAM_CHANNEL_ID, audio=songPath, thumbnail=coverPath, duration=duration, performer=artistName, title=songName)
+                    fileId = message.audio.file_id
+                    break
+                except Exception as e:
+                    logging.error(f"Error: {e}")
+                    if 'Timeout' in str(e):
+                        time.sleep(5)
+                        continue
 
             # Use fileId build InputMediaAudio.
             media = InputMediaAudio(media=fileId)
@@ -268,7 +312,6 @@ async def sendGroupSongS(update, downloadedSongs, replyMessage, mediaGroup, cont
                 time.sleep(5)
                 continue
 
-    await replyMessage.delete()
     logging.info(f"File ID dict: {fileIdDict}")
     return fileIdDict
 

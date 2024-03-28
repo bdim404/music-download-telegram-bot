@@ -4,6 +4,7 @@ from telegram import Update, InputMediaAudio
 from telegram.ext import CallbackContext
 from Database import appleMusic, get_session
 from sqlalchemy.orm import sessionmaker
+from config import TELEGRAM_CHANNEL_ID
 from get_cover_art import CoverFinder
 from pydub import AudioSegment
 from pathlib import Path
@@ -295,13 +296,19 @@ class AppleMusicChecker:
                 # Update the message;
                 await replyMessage.edit_text(f"Donwloading {notFoundCountTotal}/{notFoundCount} songs...")
 
+                if notFoundCountTotal % 10 == 0:
+                    await self.SendSong(update, songs, replyMessage, notFoundCount, mediaGroup, context)
+                    songs = []
             except Exception as e:
                 logging.error(f"Failed to get song {track_id}: {e}")
-
+        if songs:
+            await self.SendSong(update, songs, replyMessage, notFoundCount, mediaGroup, context)
         logging.info("Downloaded the song.")
         downloader.cleanup_temp_path()
-        await self.SendSong(update, songs, replyMessage, notFoundCount, mediaGroup, context)
+        # Delete the song file;
+        await self.DeleteSongFile()
 
+        return
 
     # Delete the song file;
     async def DeleteSongFile(self):
@@ -343,15 +350,25 @@ class AppleMusicChecker:
                 audiotime = AudioSegment.from_file(songPath)
                 duration = audiotime.duration_seconds
                 
-                # Send the song to the user;
                 logging.info(f"audio={songPath}, thumbnail={coverArtPath}, duration={duration}, performer={artistName}, title={songName}")
-                message = await update.message.reply_audio(audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
-               
-                # Get the fileId;
-                fileId = message.audio.file_id
-                fileIdDict[songId] = fileId
-
-            await replyMessage.delete()
+                # Send the song to the user;
+                for _ in range(5):
+                    try:
+                        message = await update.message.reply_audio(audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
+                        # Get the fileId;
+                        fileId = message.audio.file_id
+                        fileIdDict[songId] = fileId
+                        break
+                    except Exception as e:
+                        logging.error(f"Error: {e}")
+                        if 'Timeout' in str(e):
+                            time.sleep(5)
+                            continue
+                        break
+                    except:
+                        time.sleep(5)
+                        continue
+        
             return fileIdDict
         except:
             logging.error(f"An error occurred while sending the song")
@@ -361,6 +378,28 @@ class AppleMusicChecker:
     async def SendGroupSong(self, update: Update, songs, replyMessage, mediaGroup, context):
         fileIdDict = {}
         prosess = 0
+
+        # if the mediaGroup has more than 10 items, send the mediaGroup first and clear the mediaGroup.
+        if len(mediaGroup) > 10:
+            # Split mediaGroup into groups of 10 and send each group.
+            for i in range(0, len(mediaGroup), 10):
+                subMediaGroup = mediaGroup[i:i+10]
+
+                # Retry sending media group up to 5 times in case of failure.
+                for _ in range(5):
+                    try:
+                        await update.message.reply_media_group(media=subMediaGroup)
+                        break
+                    except Exception as e:
+                        logging.error(f"Error: {e}")
+                        if 'Timeout' in str(e):
+                            time.sleep(5)
+                            continue
+                        break
+                    except:
+                        time.sleep(5)
+            mediaGroup.clear()
+
         for songId, songPath, coverArtPath, songName, artistName in songs:
             try:
                 # Get the audio duration;
@@ -368,8 +407,16 @@ class AppleMusicChecker:
                 duration = audio.duration_seconds
 
                 # Send to channel one byu one，and get fileId.
-                message = await context.bot.send_audio(chat_id='@applemusicachive', audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
-                fileId = message.audio.file_id
+                for _ in range(5):
+                    try:
+                        message = await context.bot.send_audio(chat_id=TELEGRAM_CHANNEL_ID, audio=songPath, thumbnail=coverArtPath, duration=duration, performer=artistName, title=songName)
+                        fileId = message.audio.file_id
+                        break
+                    except Exception as e:
+                        logging.error(f"Error: {e}")
+                        if 'Timeout' in str(e):
+                            time.sleep(5)
+                            continue
 
                 # Use fileId build InputMediaAudio.
                 media = InputMediaAudio(media=fileId)
@@ -416,7 +463,6 @@ class AppleMusicChecker:
                     time.sleep(5)
                     continue
 
-        await replyMessage.delete()
         logging.info(f"File ID dict: {fileIdDict}")
         return fileIdDict
 
@@ -442,5 +488,3 @@ class AppleMusicChecker:
         sql_session.commit()
         sql_session.close()
 
-        # Delete the song file;
-        await self.DeleteSongFile()

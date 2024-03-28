@@ -38,6 +38,13 @@ except:
     logging.error("The SPOTIPY_CLIENT_SECRET environment variable is not set.")
     exit(1)
 
+# Set the Telegram Channel ID;
+try:
+    TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+except:
+    logging.error("The TELEGRAM_CHANNEL_ID environment variable is not set.")
+    exit(1)
+    
 # Set the Apple Music API hostname; 
 AMP_API_HOSTNAME = "https://amp-api.music.apple.com"
 
