@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
-import time
-import json
-import sys
-import logging
-from pathlib import Path, PurePath
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-import asyncio
-from sqlalchemy.orm import sessionmaker
+import time, requests, yt_dlp, json, sys, logging, spotipy
 from config import SPOTIPY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
-import os,shutil
-import yt_dlp
-from PIL import Image
-import requests
-from io import BytesIO
+from spotipy.oauth2 import SpotifyClientCredentials
+from Database import spotifyMusic, get_session
 from telegram import Update, InputMediaAudio
 from telegram.ext import CallbackContext
-from Database import spotifyMusic, get_session
+from sqlalchemy.orm import sessionmaker
+from pathlib import Path, PurePath
 from pydub import AudioSegment
+from io import BytesIO
+from PIL import Image
+import os,shutil
+import asyncio
 from spotify import (
     fetch_tracks,
     parse_spotify_url,
@@ -35,7 +29,7 @@ sp = spotipy.Spotify(
     )
 )
 
-async def check_and_get_url_type(update: Update, context):
+async def GetUrlType(update: Update, context):
     url = update.message.text
     #check the url type
     item_type, item_id = parse_spotify_url(url)
@@ -43,29 +37,34 @@ async def check_and_get_url_type(update: Update, context):
     if item_type is None or item_id is None:
         await update.message.reply_text("Invalid Spotify URL.")
         return
+    if item_type == "playlist":
+        if update.message.chat.type != "private":
+            await update.message.reply_text("Please send the Spotify playlist URL in private chat.")
+            return
+
     #get the item name
     replyMessage = await update.message.reply_text(f"Finding the {item_type} in the database...")
 
     #get the songs list
-    songs_list = fetch_tracks(sp, item_type, item_id)
-    print(songs_list)
+    songsList = fetch_tracks(sp, item_type, item_id)
+    logging.info(f"Songs list: {songsList}")
 
     #check the songs in the sqlite
-    await check_songs_in_sqlite(update, songs_list, replyMessage, context)
+    await CheckSongsInSql(update, songsList, replyMessage, context)
 
 
 
-async def check_songs_in_sqlite(update: Update, songs_list, replyMessage, context):
+async def CheckSongsInSql(update: Update, songsList, replyMessage, context):
     notFoundCount = 0
     sql_session = get_session()
     allSongsFound = True
     mediaGroup = []
     notfoundsongs = []
     #check the songs in the sqlite
-    for song in songs_list:
-        song_id = song['spotify_id']
-        logging.info(f"Song ID: {song_id}")
-        song_item = sql_session.query(spotifyMusic).filter(spotifyMusic.id == song_id).first()
+    for song in songsList:
+        songId = song['spotify_id']
+        logging.info(f"Song ID: {songId}")
+        song_item = sql_session.query(spotifyMusic).filter(spotifyMusic.id == songId).first()
         logging.info(f"Song item: {song_item}")
         if song_item is not None:
             fileId = song_item.fileId
@@ -76,7 +75,7 @@ async def check_songs_in_sqlite(update: Update, songs_list, replyMessage, contex
         else:
             notFoundCount += 1
             logging.info(f"No song item found for ID: {song['spotify_id']}")
-            notfoundsongs.append({'name': song['name'], 'artist': song['artist'], 'cover': song['cover'], 'spotify_id': song['spotify_id']})
+            notfoundsongs.append({'name': song['name'], 'artist': song['artist'], 'cover': song['cover'], 'spotifyId': song['spotify_id']})
             allSongsFound = False
             continue
     if allSongsFound:
@@ -119,13 +118,13 @@ async def check_songs_in_sqlite(update: Update, songs_list, replyMessage, contex
         await replyMessage.edit_text("Find out some songs and downloading the rest of the songs...")
 
     sql_session.close()
-    await download_songs_by_youtube(update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context)
+    await downloadSongs(update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context)
         
 
-async def download_songs_by_youtube(update: Update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context):
+async def downloadSongs(update: Update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context):
     await replyMessage.edit_text(f"Downloading {notFoundCount} songs from YouTube...")
-    downloadedcount = 0
-    downloadedsongs = []
+    downloadedCount = 0
+    downloadedSongs = []
     for i, song in enumerate(notfoundsongs, start=1):
         # Format number as two digits
         num = "{:02}".format(i)
@@ -141,6 +140,7 @@ async def download_songs_by_youtube(update: Update, mediaGroup, notfoundsongs, n
             }],
             'default_search': 'ytsearch',
             'retries': 10,
+            'socket_timeout': 10,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"{song['name']} {song['artist']}"])
@@ -152,29 +152,29 @@ async def download_songs_by_youtube(update: Update, mediaGroup, notfoundsongs, n
         # Download cover
         response = requests.get(song['cover'])
         img = Image.open(BytesIO(response.content))
-        cover_path = f"./CoverArt/{song['name']}.jpg"
-        img.save(cover_path)
+        coverPath = f"./CoverArt/{song['name']}.jpg"
+        img.save(coverPath)
 
-        # Add song info to downloadedsongs
-        downloadedsongs.append({
+        # Add song info to downloadedSongs
+        downloadedSongs.append({
             'name': song['name'],
             'artist': song['artist'],
-            'song_path': f"./Spotify/{song['artist']}/{num} {song['name']} - {song['artist']}.mp3",  # Use num here
-            'cover_path': cover_path,
-            'spotify_id': song['spotify_id']
+            'songPath': f"./Spotify/{song['artist']}/{num} {song['name']} - {song['artist']}.mp3",  # Use num here
+            'coverPath': coverPath,
+            'spotifyId': song['spotifyId']
         })
-        downloadedcount += 1
-        await replyMessage.edit_text(f"Downloaded {downloadedcount} songs from YouTube...")
+        downloadedCount += 1
+        await replyMessage.edit_text(f"Downloaded {downloadedCount} songs from YouTube...")
     await replyMessage.edit_text("Downloaded successfully, sending to you!")
-    return await send_songs(update, mediaGroup, downloadedsongs, notFoundCount, replyMessage, context)
+    return await sendSong(update, mediaGroup, downloadedSongs, notFoundCount, replyMessage, context)
 
-async def send_songs(update, mediaGroup, downloadedsongs, notFoundCount, replyMessage, context):
+async def sendSong(update, mediaGroup, downloadedSongs, notFoundCount, replyMessage, context):
 
     # Based on the number of songs, send the song to the user;
     if notFoundCount == 1:
-        fileIdDict = await send_singe_song(update, downloadedsongs, replyMessage)
+        fileIdDict = await sendSingeSong(update, downloadedSongs, replyMessage)
     else:
-        fileIdDict = await send_group_song(update, downloadedsongs, replyMessage, mediaGroup, context)
+        fileIdDict = await sendGroupSongS(update, downloadedSongs, replyMessage, mediaGroup, context)
 
     logging.info(f"File ID dict: {fileIdDict}")
 
@@ -182,51 +182,51 @@ async def send_songs(update, mediaGroup, downloadedsongs, notFoundCount, replyMe
     # Save the song info to sql;    
     await SaveSongInfoToSql(fileIdDict)
 
-async def send_singe_song(update, downloadedsongs, replyMessage):
+async def sendSingeSong(update, downloadedSongs, replyMessage):
     fileIdDict = {}
-    for song in downloadedsongs:
-        song_path = song['song_path']
-        cover_path = song['cover_path']
-        song_name = song['name']
-        artist_name = song['artist']
-        song_id = song['spotify_id']
-        logging.info(f"Sending songpath {song_path} coverpath {cover_path} songname {song_name} artistname {artist_name} songid {song_id}")
+    for song in downloadedSongs:
+        songPath = song['songPath']
+        coverPath = song['coverPath']
+        songName = song['name']
+        artistName = song['artist']
+        songId = song['spotifyId']
+        logging.info(f"Sending songpath {songPath} coverpath {coverPath} songname {songName} artistname {artistName} songid {songId}")
         # Get the audio duration
-        audio = AudioSegment.from_file(song_path)
+        audio = AudioSegment.from_file(songPath)
         duration = audio.duration_seconds
 
         # Send the song to the user
-        message = await update.message.reply_audio(audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=song_name)
+        message = await update.message.reply_audio(audio=songPath, thumbnail=coverPath, duration=duration, performer=artistName, title=songName)
 
         # Get the fileId
         fileId = message.audio.file_id
-        fileIdDict[song_id] = fileId
+        fileIdDict[songId] = fileId
     return fileIdDict
 
-async def send_group_song(update, downloadedsongs, replyMessage, mediaGroup, context):
+async def sendGroupSongS(update, downloadedSongs, replyMessage, mediaGroup, context):
     fileIdDict = {}
     prosess = 0
-    for song in downloadedsongs:
+    for song in downloadedSongs:
         try:
-            song_path = song['song_path']
-            cover_path = song['cover_path']
-            song_name = song['name']
-            artist_name = song['artist']
-            song_id = song['spotify_id']
+            songPath = song['songPath']
+            coverPath = song['coverPath']
+            songName = song['name']
+            artistName = song['artist']
+            songId = song['spotifyId']
 
-            logging.info(f"Sending songpath {song_path} coverpath {cover_path} songname {song_name} artistname {artist_name} songid {song_id}")
+            logging.info(f"Sending songpath {songPath} coverpath {coverPath} songname {songName} artistname {artistName} songid {songId}")
             # Get the audio duration
-            audio = AudioSegment.from_file(song_path)
+            audio = AudioSegment.from_file(songPath)
             duration = audio.duration_seconds
 
             # Send the song to the user
-            message = await context.bot.send_audio(chat_id='@applemusicachive', audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=song_name)
+            message = await context.bot.send_audio(chat_id='@applemusicachive', audio=songPath, thumbnail=coverPath, duration=duration, performer=artistName, title=songName)
             fileId = message.audio.file_id
 
             # Use fileId build InputMediaAudio.
             media = InputMediaAudio(media=fileId)
             mediaGroup.append(media)
-            fileIdDict[song_id] = fileId
+            fileIdDict[songId] = fileId
             logging.info(f"File ID: {fileId}")
             prosess += 1
             await replyMessage.edit_text(f"Loading {prosess}.")
@@ -277,12 +277,12 @@ async def SaveSongInfoToSql(fileIdDict):
     sql_session = get_session()
     logging.info(f"File ID dict: {fileIdDict}")
 
-    for spotify_id, fileId in fileIdDict.items():
+    for spotifyId, fileId in fileIdDict.items():
         # Check if the song exists;
-        existing_song = sql_session.query(spotifyMusic).filter(id == spotify_id).first()
+        existing_song = sql_session.query(spotifyMusic).filter(id == spotifyId).first()
         if existing_song is None:
-            song_item = spotifyMusic(id=spotify_id, fileId=fileId)
-            logging.info(f"Saving song with ID {spotify_id} to the database.")
+            song_item = spotifyMusic(id=spotifyId, fileId=fileId)
+            logging.info(f"Saving song with ID {spotifyId} to the database.")
             sql_session.add(song_item)
         else:
             logging.info(f"Song with ID {songId} already exists, skipping")

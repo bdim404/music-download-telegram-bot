@@ -44,22 +44,11 @@ def fetch_tracks(sp, item_type, item_id):
                     track_num = track_info.get("track_number")
                     track_name = track_info.get("name")
                     spotify_id = track_info.get("id")
-                    try:
-                        track_audio_data = sp.audio_analysis(spotify_id)
-                        tempo = track_audio_data.get("track").get("tempo")
-                    except:
-                        log.error("Couldn't fetch audio analysis for %s", track_name)
-                        tempo = None
                     track_artist = ", ".join(
                         [artist["name"] for artist in track_info.get("artists")]
                     )
                     if track_album_info:
                         track_album = track_album_info.get("name")
-                        track_year = (
-                            track_album_info.get("release_date")[:4]
-                            if track_album_info.get("release_date")
-                            else ""
-                        )
                         album_total = track_album_info.get("total_tracks")
                     if len(item["track"]["album"]["images"]) > 0:
                         cover = item["track"]["album"]["images"][0]["url"]
@@ -70,29 +59,16 @@ def fetch_tracks(sp, item_type, item_id):
                     main_artist_id = (
                         artists[0].get("uri", None) if len(artists) > 0 else None
                     )
-                    genres = (
-                        sp.artist(artist_id=main_artist_id).get("genres", [])
-                        if main_artist_id
-                        else []
-                    )
-                    if len(genres) > 0:
-                        genre = genres[0]
-                    else:
-                        genre = ""
                     songs_list.append(
                         {
                             "name": track_name,
                             "artist": track_artist,
                             "album": track_album,
-                            "year": track_year,
                             "num_tracks": album_total,
                             "num": track_num,
                             "playlist_num": offset + 1,
                             "cover": cover,
-                            "genre": genre,
                             "spotify_id": spotify_id,
-                            "track_url": None,
-                            "tempo": tempo,
                         }
                     )
                     offset += 1
@@ -122,25 +98,11 @@ def fetch_tracks(sp, item_type, item_id):
                 items = sp.album_tracks(album_id=item_id, offset=offset)
                 total_songs = items.get("total")
                 track_album = album_info.get("name")
-                track_year = (
-                    album_info.get("release_date")[:4]
-                    if album_info.get("release_date")
-                    else ""
-                )
                 album_total = album_info.get("total_tracks")
                 if len(album_info["images"]) > 0:
                     cover = album_info["images"][0]["url"]
                 else:
                     cover = None
-                if (
-                    len(sp.artist(artist_id=album_info["artists"][0]["uri"])["genres"])
-                    > 0
-                ):
-                    genre = sp.artist(artist_id=album_info["artists"][0]["uri"])[
-                        "genres"
-                    ][0]
-                else:
-                    genre = ""
                 for item in items["items"]:
                     track_name = item.get("name")
                     track_artist = ", ".join(
@@ -148,26 +110,17 @@ def fetch_tracks(sp, item_type, item_id):
                     )
                     track_num = item["track_number"]
                     spotify_id = item.get("id")
-                    try:
-                        track_audio_data = sp.audio_analysis(spotify_id)
-                        tempo = track_audio_data.get("track").get("tempo")
-                    except:
-                        log.error("Couldn't fetch audio analysis for %s", track_name)
-                        tempo = None
                     songs_list.append(
                         {
                             "name": track_name,
                             "artist": track_artist,
                             "album": track_album,
-                            "year": track_year,
                             "num_tracks": album_total,
                             "num": track_num,
                             "track_url": None,
                             "playlist_num": offset + 1,
                             "cover": cover,
-                            "genre": genre,
                             "spotify_id": spotify_id,
-                            "tempo": tempo,
                         }
                     )
                     offset += 1
@@ -188,42 +141,23 @@ def fetch_tracks(sp, item_type, item_id):
         track_artist = ", ".join([artist["name"] for artist in items["artists"]])
         if album_info:
             track_album = album_info.get("name")
-            track_year = (
-                album_info.get("release_date")[:4]
-                if album_info.get("release_date")
-                else ""
-            )
             album_total = album_info.get("total_tracks")
         track_num = items["track_number"]
         spotify_id = items["id"]
-        try:
-            track_audio_data = sp.audio_analysis(spotify_id)
-            tempo = track_audio_data.get("track").get("tempo")
-        except:
-            log.error("Couldn't fetch audio analysis for %s", track_name)
-            tempo = None
         if len(items["album"]["images"]) > 0:
             cover = items["album"]["images"][0]["url"]
         else:
             cover = None
-        if len(sp.artist(artist_id=items["artists"][0]["uri"])["genres"]) > 0:
-            genre = sp.artist(artist_id=items["artists"][0]["uri"])["genres"][0]
-        else:
-            genre = ""
         songs_list.append(
             {
                 "name": track_name,
                 "artist": track_artist,
                 "album": track_album,
-                "year": track_year,
                 "num_tracks": album_total,
                 "num": track_num,
                 "playlist_num": offset + 1,
                 "cover": cover,
-                "genre": genre,
-                "track_url": None,
                 "spotify_id": spotify_id,
-                "tempo": tempo,
             }
         )
 

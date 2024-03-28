@@ -4,7 +4,7 @@
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
 from AppleMusicChecker import AppleMusicChecker
 import spotify_dl 
-from spotify_dl import check_and_get_url_type
+from spotify_dl import GetUrlType
 from telegram import Update,Message
 from dotenv import load_dotenv
 import logging,os,asyncio,re
@@ -69,7 +69,7 @@ async def handleRequest(update: Update, context):
         downloader = AppleMusicChecker()
         await downloader.CheckLinkType(update, context)
     elif "https://open.spotify.com" in update.message.text:
-        await check_and_get_url_type(update, context)
+        await GetUrlType(update, context)
     elif update.message.chat.type == "private":
         await update.message.reply_text("Please send me the link of the song you want to download.")
     else:
