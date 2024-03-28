@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+import time
+import json
+import sys
+import logging
+from pathlib import Path, PurePath
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import asyncio
+from sqlalchemy.orm import sessionmaker
+from config import SPOTIPY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+import os,shutil
+import yt_dlp
+from PIL import Image
+import requests
+from io import BytesIO
+from telegram import Update, InputMediaAudio
+from telegram.ext import CallbackContext
+from Database import spotifyMusic, get_session
+from pydub import AudioSegment
+from spotify import (
+    fetch_tracks,
+    parse_spotify_url,
+    get_item_name,
+)
+
+# Set the Spotify client id and client secret;
+client_id = SPOTIPY_CLIENT_ID
+client_secret = SPOTIFY_CLIENT_SECRET
+
+# Create a Spotify client;
+sp = spotipy.Spotify(
+    auth_manager=SpotifyClientCredentials(
+        client_id=client_id, client_secret=client_secret
+    )
+)
+
+async def check_and_get_url_type(update: Update, context):
+    url = update.message.text
+    #check the url type
+    item_type, item_id = parse_spotify_url(url)
+    logging.info(f"item_type: {item_type}, item_id: {item_id}")
+    if item_type is None or item_id is None:
+        await update.message.reply_text("Invalid Spotify URL.")
+        return
+    #get the item name
+    replyMessage = await update.message.reply_text(f"Finding the {item_type} in the database...")
+
+    #get the songs list
+    songs_list = fetch_tracks(sp, item_type, item_id)
+    print(songs_list)
+
+    #check the songs in the sqlite
+    await check_songs_in_sqlite(update, songs_list, replyMessage, context)
+
+
+
+async def check_songs_in_sqlite(update: Update, songs_list, replyMessage, context):
+    notFoundCount = 0
+    sql_session = get_session()
+    allSongsFound = True
+    mediaGroup = []
+    notfoundsongs = []
+    #check the songs in the sqlite
+    for song in songs_list:
+        song_id = song['spotify_id']
+        logging.info(f"Song ID: {song_id}")
+        song_item = sql_session.query(spotifyMusic).filter(spotifyMusic.id == song_id).first()
+        logging.info(f"Song item: {song_item}")
+        if song_item is not None:
+            fileId = song_item.fileId
+            logging.info(f"File ID: {fileId}")
+            # Use fileId build InputMediaAudio, and wait for the next step to send to user.
+            media = InputMediaAudio(media=fileId)
+            mediaGroup.append(media)
+        else:
+            notFoundCount += 1
+            logging.info(f"No song item found for ID: {song['spotify_id']}")
+            notfoundsongs.append({'name': song['name'], 'artist': song['artist'], 'cover': song['cover'], 'spotify_id': song['spotify_id']})
+            allSongsFound = False
+            continue
+    if allSongsFound:
+        if len(mediaGroup) > 10:
+            # Split mediaGroup into groups of 10 and send each group.
+            for i in range(0, len(mediaGroup), 10):
+                subMediaGroup = mediaGroup[i:i+10]
+
+                # Retry sending media group up to 5 times in case of failure.
+                for _ in range(5):
+                    try:
+                        await update.message.reply_media_group(media=subMediaGroup)
+                        break  # If sending is successful, exit the retry loop immediately.
+                    except Exception as e:
+                        logging.error(f"Error: {e}")
+                        if 'Timeout' in str(e):
+                            time.sleep(5)
+                            continue
+                        break  # If the message has already been sent, exit the retry loop immediately.
+                    except:
+                        time.sleep(5)
+        else:
+            # If mediaGroup has less than 10 items, send it directly.
+            for _ in range(5):
+                try:
+                    await update.message.reply_media_group(media=mediaGroup)
+                    break
+                except Exception as e:
+                    logging.error(f"Error: {e}")
+                    if 'Timeout' in str(e):
+                        time.sleep(5)
+                        continue
+                    break
+                except:
+                    time.sleep(5)
+
+        await replyMessage.delete()
+        return
+    else:
+        await replyMessage.edit_text("Find out some songs and downloading the rest of the songs...")
+
+    sql_session.close()
+    await download_songs_by_youtube(update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context)
+        
+
+async def download_songs_by_youtube(update: Update, mediaGroup, notfoundsongs, notFoundCount, replyMessage, context):
+    await replyMessage.edit_text(f"Downloading {notFoundCount} songs from YouTube...")
+    downloadedcount = 0
+    downloadedsongs = []
+    for i, song in enumerate(notfoundsongs, start=1):
+        # Format number as two digits
+        num = "{:02}".format(i)
+
+        # Download song
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': f"./Spotify/{song['artist']}/{num} {song['name']} - {song['artist']}",  # Use num here
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'default_search': 'ytsearch',
+            'retries': 10,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f"{song['name']} {song['artist']}"])
+
+        # Create cover directory if not exists
+        if not os.path.exists('./CoverArt'):
+            os.makedirs('./CoverArt')
+
+        # Download cover
+        response = requests.get(song['cover'])
+        img = Image.open(BytesIO(response.content))
+        cover_path = f"./CoverArt/{song['name']}.jpg"
+        img.save(cover_path)
+
+        # Add song info to downloadedsongs
+        downloadedsongs.append({
+            'name': song['name'],
+            'artist': song['artist'],
+            'song_path': f"./Spotify/{song['artist']}/{num} {song['name']} - {song['artist']}.mp3",  # Use num here
+            'cover_path': cover_path,
+            'spotify_id': song['spotify_id']
+        })
+        downloadedcount += 1
+        await replyMessage.edit_text(f"Downloaded {downloadedcount} songs from YouTube...")
+    await replyMessage.edit_text("Downloaded successfully, sending to you!")
+    return await send_songs(update, mediaGroup, downloadedsongs, notFoundCount, replyMessage, context)
+
+async def send_songs(update, mediaGroup, downloadedsongs, notFoundCount, replyMessage, context):
+
+    # Based on the number of songs, send the song to the user;
+    if notFoundCount == 1:
+        fileIdDict = await send_singe_song(update, downloadedsongs, replyMessage)
+    else:
+        fileIdDict = await send_group_song(update, downloadedsongs, replyMessage, mediaGroup, context)
+
+    logging.info(f"File ID dict: {fileIdDict}")
+
+    await delete_files()
+    # Save the song info to sql;    
+    await SaveSongInfoToSql(fileIdDict)
+
+async def send_singe_song(update, downloadedsongs, replyMessage):
+    fileIdDict = {}
+    for song in downloadedsongs:
+        song_path = song['song_path']
+        cover_path = song['cover_path']
+        song_name = song['name']
+        artist_name = song['artist']
+        song_id = song['spotify_id']
+        logging.info(f"Sending songpath {song_path} coverpath {cover_path} songname {song_name} artistname {artist_name} songid {song_id}")
+        # Get the audio duration
+        audio = AudioSegment.from_file(song_path)
+        duration = audio.duration_seconds
+
+        # Send the song to the user
+        message = await update.message.reply_audio(audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=song_name)
+
+        # Get the fileId
+        fileId = message.audio.file_id
+        fileIdDict[song_id] = fileId
+    return fileIdDict
+
+async def send_group_song(update, downloadedsongs, replyMessage, mediaGroup, context):
+    fileIdDict = {}
+    prosess = 0
+    for song in downloadedsongs:
+        try:
+            song_path = song['song_path']
+            cover_path = song['cover_path']
+            song_name = song['name']
+            artist_name = song['artist']
+            song_id = song['spotify_id']
+
+            logging.info(f"Sending songpath {song_path} coverpath {cover_path} songname {song_name} artistname {artist_name} songid {song_id}")
+            # Get the audio duration
+            audio = AudioSegment.from_file(song_path)
+            duration = audio.duration_seconds
+
+            # Send the song to the user
+            message = await context.bot.send_audio(chat_id='@applemusicachive', audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=song_name)
+            fileId = message.audio.file_id
+
+            # Use fileId build InputMediaAudio.
+            media = InputMediaAudio(media=fileId)
+            mediaGroup.append(media)
+            fileIdDict[song_id] = fileId
+            logging.info(f"File ID: {fileId}")
+            prosess += 1
+            await replyMessage.edit_text(f"Loading {prosess}.")
+
+            if len(mediaGroup) == 10:
+                for _ in range(5):
+                    try:
+                        # If mediaGroup has 10 items, send them and clear mediaGroup.
+                        await update.message.reply_media_group(media=mediaGroup)
+                        mediaGroup.clear()
+                        break
+                    except Exception as e:
+                        logging.error(f"error: {e}")
+                        if 'Timeout' in str(e):
+                            time.sleep(5)
+                            continue
+                    except:
+                        time.sleep(5)
+                        continue
+        except:
+            logging.error(f"An error occurred while sending the song", exc_info=True)
+    logging.info(f"Media group: {mediaGroup}")
+
+    await replyMessage.edit_text("Loaded successfully, sending to you!")
+    # Send remaining songs in mediaGroup.
+    if mediaGroup:
+        for _ in range(3):
+            try:
+                logging.info(f"Media group: {mediaGroup}")
+                await update.message.reply_media_group(media=mediaGroup)
+                break
+            except Exception as e:
+                logging.error(f"error: {e}")
+                if 'Timeout' in str(e):
+                    time.sleep(5)
+                    continue
+            except:
+                logging.error(f"An error occurred while sending the song", exc_info=True)
+                time.sleep(5)
+                continue
+
+    await replyMessage.delete()
+    logging.info(f"File ID dict: {fileIdDict}")
+    return fileIdDict
+
+
+async def SaveSongInfoToSql(fileIdDict):
+    sql_session = get_session()
+    logging.info(f"File ID dict: {fileIdDict}")
+
+    for spotify_id, fileId in fileIdDict.items():
+        # Check if the song exists;
+        existing_song = sql_session.query(spotifyMusic).filter(id == spotify_id).first()
+        if existing_song is None:
+            song_item = spotifyMusic(id=spotify_id, fileId=fileId)
+            logging.info(f"Saving song with ID {spotify_id} to the database.")
+            sql_session.add(song_item)
+        else:
+            logging.info(f"Song with ID {songId} already exists, skipping")
+    
+    logging.info("Song saved in the database.")
+    sql_session.commit()
+    sql_session.close()
+
+    
+
+async def delete_files():
+    directories = ["./Spotify", "./CoverArt"]
+    for directory in directories:
+        try:
+            if os.path.exists(directory):
+                shutil.rmtree(directory)
+                logging.info(f"The directory {directory} has been deleted")
+            else:
+                logging.info(f"The directory {directory} does not exist")
+        except PermissionError:
+            logging.info("Permission denied")
+        except Exception as e:
+            logging.info(f"An error occurred: {e}")

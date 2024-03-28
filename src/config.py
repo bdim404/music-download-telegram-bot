@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-import logging
+import logging,os
 
 load_dotenv()
 
@@ -23,6 +23,20 @@ except:
         logging.error("The WVD_LOCATION environment variable is not set.")
         exit(1)
 
+
+# Set the spotify client id;
+try:
+    SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+except:
+    logging.error("The SPOTIPY_CLIENT_ID environment variable is not set.")
+    exit(1)
+
+# Set the spotify client secret;
+try:
+    SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+except:
+    logging.error("The SPOTIPY_CLIENT_SECRET environment variable is not set.")
+    exit(1)
 
 # Set the Apple Music API hostname; 
 AMP_API_HOSTNAME = "https://amp-api.music.apple.com"

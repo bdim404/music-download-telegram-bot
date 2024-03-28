@@ -2,7 +2,7 @@ from AppleMusicDownloader import Downloader
 from urllib.parse import urlparse, parse_qs
 from telegram import Update, InputMediaAudio
 from telegram.ext import CallbackContext
-from Database import musicSong, get_session
+from Database import appleMusic, get_session
 from sqlalchemy.orm import sessionmaker
 from get_cover_art import CoverFinder
 from pydub import AudioSegment
@@ -68,7 +68,7 @@ class AppleMusicChecker:
         # Check if the song has been downloaded before from sql;
         try:
             notFoundCount = 0
-            songItem = sql_session.query(musicSong).filter_by(id=id).first()
+            songItem = sql_session.query(appleMusic).filter_by(id=id).first()
             if songItem is not None:
                 fileId = songItem.fileId
                 logging.info(f"File ID: {fileId}")
@@ -106,7 +106,7 @@ class AppleMusicChecker:
             mediaGroup = []
             notFoundCount = 0  
             for songId in songs:
-                songItem = sql_session.query(musicSong).filter_by(id=songId).first()
+                songItem = sql_session.query(appleMusic).filter_by(id=songId).first()
                 if songItem is not None:
                     fileId = songItem.fileId
                     logging.info(f"File ID: {fileId}")
@@ -181,7 +181,7 @@ class AppleMusicChecker:
             mediaGroup = []
             notFoundCount = 0  # 添加计数器
             for songId in songs:
-                songItem = sql_session.query(musicSong).filter_by(id=songId).first()
+                songItem = sql_session.query(appleMusic).filter_by(id=songId).first()
                 if songItem is not None:
                     fileId = songItem.fileId
                     logging.info(f"File ID: {fileId}")
@@ -429,11 +429,11 @@ class AppleMusicChecker:
         # Get the song info;    
         for songId, fileId in fileIdDict.items():
             # Check if the song exists;
-            existing_song = sql_session.query(musicSong).filter_by(id=songId).first()
+            existing_song = sql_session.query(appleMusic).filter_by(id=songId).first()
             if existing_song is None:
-                musicSongItem = musicSong(id=songId, fileId=fileId)
-                logging.info(f"New song: {musicSongItem}")
-                sql_session.add(musicSongItem)
+                appleMusicItem = appleMusic(id=songId, fileId=fileId)
+                logging.info(f"New song: {appleMusicItem}")
+                sql_session.add(appleMusicItem)
                 logging.info(f"Saveing the {songId} fileId {fileId}saved in the database.")
             else:
                 logging.info(f"Song with ID {songId} already exists, skipping")
