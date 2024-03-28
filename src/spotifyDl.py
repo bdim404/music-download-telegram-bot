@@ -113,6 +113,9 @@ async def CheckSongsInSql(update: Update, songsList, replyMessage, context):
                     time.sleep(5)
 
         await replyMessage.delete()
+        
+        if update.message.chat.type == "private":
+            await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
         return
     else:
         await replyMessage.edit_text("Find out some songs and downloading the rest of the songs...")
@@ -180,6 +183,8 @@ async def downloadSongs(update: Update, mediaGroup, notfoundsongs, notFoundCount
         await sendSong(update, mediaGroup, downloadedSongs, downloadedCount, replyMessage, context)
 
     await delete_files()
+    if update.message.chat.type == "private":
+        await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
     return 
 
 async def sendSong(update, mediaGroup, downloadedSongs, notFoundCount, replyMessage, context):

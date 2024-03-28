@@ -78,6 +78,8 @@ class AppleMusicChecker:
                 logging.info("Song sent to the user.")
                 await replyMessage.edit_text("Find out, sent to you!")
                 await replyMessage.delete()
+                if update.message.chat.type == "private":
+                    await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
                 return
             else:
                 songNotFoundId = id
@@ -157,6 +159,9 @@ class AppleMusicChecker:
                             time.sleep(5)
 
                 await replyMessage.delete()
+
+                if update.message.chat.type == "private":
+                    await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
                 return
             else:
                 await replyMessage.edit_text("Find out some songs and downloading the rest of the songs...")
@@ -234,6 +239,10 @@ class AppleMusicChecker:
                             time.sleep(5)
 
                 await replyMessage.delete()
+
+                if update.message.chat.type == "private":
+                    await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
+
                 return
             else:
                 await replyMessage.edit_text("Find out some songs, senting to you! and downloading the rest of the songs...")
@@ -307,6 +316,8 @@ class AppleMusicChecker:
         downloader.cleanup_temp_path()
         # Delete the song file;
         await self.DeleteSongFile()
+        if update.message.chat.type == "private":
+            await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
 
         return
 

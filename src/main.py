@@ -74,10 +74,13 @@ async def handleRequest(update: Update, context):
     else:
         logging.info("The message is not a link including Apple Music.")
 
+async def donate(update: Update, context):
+    await update.message.reply_text("You can donate to me at https://ko-fi.com/bdim404.")
 
 if __name__ == '__main__':
     bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     bot.add_handler(CommandHandler("start", handleStartMessage))
+    bot.add_handler(CommandHandler("donate", donate))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handleRequest))
     bot.run_polling(timeout=60, allowed_updates=Update.ALL_TYPES)
     logging.info("Bot application started")
