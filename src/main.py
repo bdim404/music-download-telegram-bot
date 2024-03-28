@@ -66,7 +66,7 @@ async def handleRequest(update: Update, context):
             url = re.findall(r'(https?://\S+)', update.message.text)[0]
             await GetUrlType(update, context, url)
         else:
-            logging.info("The message is not a link including Apple Music.")
+            logging.info("The message is not a link including Apple Music or Spotify.")
             await update.message.reply_text("Please send me the link of the song you want to download.")
 
 async def donate(update: Update, context):
@@ -95,14 +95,21 @@ async def DownloadSongInGroup(update: Update, context):
     elif "https://open.spotify.com" in update.message.text:
         await GetUrlType(update, context)
     else:
-        logging.info("The message is not a link including Apple Music.")
+        logging.info("The message is not a link including Apple Music or Spotify.")
+        await update.message.reply_text("Please reply to the message containing the link of the song you want to download, if you don't know how to download a song, send /help.")
 
+async def help(update: Update, context):
+    if update.message.chat.type == "private":
+        await update.message.reply_text("This bot can download songs from Apple Music and Spotify. Just send the link of the song you want to download.")
+    else:
+        await update.message.reply_text("This bot can download songs from Apple Music and Spotify. Just reply to the message containing the link of the song you want to download with /download@bot.")
 
 if __name__ == '__main__':
     bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     bot.add_handler(CommandHandler("start", handleStartMessage))
     bot.add_handler(CommandHandler("donate", donate))
     bot.add_handler(CommandHandler("download", DownloadSongInGroup))
+    bot.add_handler(CommandHandler("help", help))
     bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handleRequest))
     bot.run_polling(timeout=60, allowed_updates=Update.ALL_TYPES)
     logging.info("Bot application started")
