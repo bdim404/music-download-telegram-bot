@@ -47,5 +47,6 @@ Before proceeding, ensure that you have [FFmpeg](https://ffmpeg.org/download.htm
 ## Important Notes
 
 - Follow the installation steps carefully to avoid any errors during setup.
+- This bot sends songs through a media group, so make sure you have a channel that holds a cache of songs.
 - Ensure that your Telegram bot token and the files `cookies.txt` and `device.wvd` are valid and up-to-date for the bot to function correctly.
 - Check your internet connection before running the bot to ensure smooth access to GitHub and the FFmpeg website.
