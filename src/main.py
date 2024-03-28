@@ -3,8 +3,7 @@
 
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
 from AppleMusicChecker import AppleMusicChecker
-import spotify_dl 
-from spotify_dl import GetUrlType
+from spotifyDl import GetUrlType
 from telegram import Update,Message
 from dotenv import load_dotenv
 import logging,os,asyncio,re
