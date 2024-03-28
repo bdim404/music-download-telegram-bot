@@ -89,11 +89,6 @@ async def DownloadSongInGroup(update: Update, context):
     elif update.message.reply_to_message and "https://open.spotify.com" in update.message.reply_to_message.text:
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
         await GetUrlType(update, context, url)
-    elif "https://music.apple.com" in update.message.text:
-        downloader = AppleMusicChecker()
-        await downloader.CheckLinkType(update, context)
-    elif "https://open.spotify.com" in update.message.text:
-        await GetUrlType(update, context)
     else:
         logging.info("The message is not a link including Apple Music or Spotify.")
         await update.message.reply_text("Please reply to the message containing the link of the song you want to download, if you don't know how to download a song, send /help.")
