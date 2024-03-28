@@ -9,6 +9,10 @@ An Apple Music & Spotify Music Telegram bot downloader created with Python.
 - **yt-dlp Utilization** for efficient and reliable downloading from music platforms.
 - **Customization Options** to tailor the bot's behavior to your specific needs.
 
+## News!
+
+- Add the function of posting while downloading, you can download 100 songs playlist at a time.(29/3/2024)
+
 ## Installation
 
 Before proceeding, ensure that you have [FFmpeg](https://ffmpeg.org/download.html) installed on your system.
