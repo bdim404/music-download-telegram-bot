@@ -26,9 +26,8 @@ downloader.setup_cdm()
 class AppleMusicChecker:
 
     # Check the link type;
-    async def CheckLinkType(self, update: Update, context):
+    async def CheckLinkType(self, update: Update, context, url):
         logging.info("Checking the link type...")
-        url = update.message.text
         url_regex_result = re.search(
             r"/([a-z]{2})/(album|playlist|song|music-video)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)",
             url,

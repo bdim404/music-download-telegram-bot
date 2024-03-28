@@ -29,8 +29,7 @@ sp = spotipy.Spotify(
     )
 )
 
-async def GetUrlType(update: Update, context):
-    url = update.message.text
+async def GetUrlType(update: Update, context, url):
     #check the url type
     item_type, item_id = parse_spotify_url(url)
     logging.info(f"item_type: {item_type}, item_id: {item_id}")
@@ -113,7 +112,7 @@ async def CheckSongsInSql(update: Update, songsList, replyMessage, context):
                     time.sleep(5)
 
         await replyMessage.delete()
-        
+
         if update.message.chat.type == "private":
             await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
         return
