@@ -1,4 +1,4 @@
-# musicDownloadBot
+# music-download-telegram-bot
 
 An Apple Music & Spotify Music Telegram bot downloader created with Python.
 
