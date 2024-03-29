@@ -58,16 +58,16 @@ async def handleRequest(update: Update, context):
 
     # Check if the message is a link including Apple Music;
     if update.message.chat.type == "private":
-        if "https://music.apple.com" in update.message.text :
+        if "https://music.apple.com/" in update.message.text :
             downloader = AppleMusicChecker()
             url = re.findall(r'(https?://\S+)', update.message.text)[0]
             await downloader.check_link_type(update, context, url)
-        elif "https://open.spotify.com" in update.message.text:
+        elif "https://open.spotify.com/" in update.message.text:
             url = re.findall(r'(https?://\S+)', update.message.text)[0]
             await get_url_type(update, context, url)
         else:
             logging.info("The message is not a link including Apple Music or Spotify.")
-            await update.message.reply_text("Please send me the link of the song you want to download.")
+            await update.message.reply_text("Please send me the link of the song from Apple Music or Spotify you want to download.")
 
 async def donate(update: Update, context):
     await update.message.reply_text("You can donate to me at https://ko-fi.com/bdim404.")
@@ -82,11 +82,11 @@ async def DownloadSongInGroup(update: Update, context):
     logging.info(f"text: {update.message.text}")
 
     # Check if the message is a link including Apple Music;
-    if update.message.reply_to_message and "https://music.apple.com" in update.message.reply_to_message.text:
+    if update.message.reply_to_message and "https://music.apple.com/" in update.message.reply_to_message.text:
         downloader = AppleMusicChecker()
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
         await downloader.check_link_type(update, context, url)
-    elif update.message.reply_to_message and "https://open.spotify.com" in update.message.reply_to_message.text:
+    elif update.message.reply_to_message and "https://open.spotify.com/" in update.message.reply_to_message.text:
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
         await get_url_type(update, context, url)
     else:
