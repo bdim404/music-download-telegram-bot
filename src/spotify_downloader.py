@@ -67,7 +67,7 @@ async def check_songs_in_sql(update: Update, songs_list, reply_message, context)
         song_item = sql_session.query(spotify_music).filter(spotify_music.id == song_id).first()
         logging.info(f"Song item: {song_item}")
         if song_item is not None:
-            file_id = song_item.file_id
+            file_id = song_item.fileId
             logging.info(f"File ID: {file_id}")
 
             # Use file_id build InputMediaAudio, and wait for the next step to send to user.
@@ -84,12 +84,12 @@ async def check_songs_in_sql(update: Update, songs_list, reply_message, context)
 
             # Split media_group into groups of 10 and send each group.
             for i in range(0, len(media_group), 10):
-                submedia_group = media_group[i:i+10]
+                sub_media_group = media_group[i:i+10]
 
                 # Retry sending media group up to 5 times in case of failure.
-                for _ in range(5):
+                for _ in range(10):
                     try:
-                        await update.message.reply_media_group(media=submedia_group)
+                        await update.message.reply_media_group(media=sub_media_group)
                         break  # If sending is successful, exit the retry loop immediately.
                     except Exception as e:
                         logging.error(f"Error: {e}")
@@ -130,7 +130,7 @@ async def check_songs_in_sql(update: Update, songs_list, reply_message, context)
 
 async def download_songs(update: Update, media_group, not_found_songs, not_found_count, reply_message, context):
     if not_found_count == 1:
-        return await reply_message.edit_text("Downloading song from YouTube...")
+        await reply_message.edit_text("Downloading song from YouTube...")
     else:
         await reply_message.edit_text(f"Downloading {not_found_count} songs from YouTube...")
     downloaded_count = 0
@@ -190,6 +190,7 @@ async def download_songs(update: Update, media_group, not_found_songs, not_found
         await send_song(update, media_group, downloaded_songs, downloaded_count, reply_message, context)
 
     await delete_files()
+    await reply_message.delete()
 
     # if the chat type is private, send the message to the user;
     if update.message.chat.type == "private":
@@ -220,14 +221,14 @@ async def send_singe_song(update, downloaded_songs, reply_message):
         song_name = song['name']
         artist_name = song['artist']
         song_id = song['spotify_id']
-        logging.info(f"Sending song_path {song_path} cover_path {cover_path} song_name {songName} artist_name {artist_name} song_id {song_id}")
+        logging.info(f"Sending song_path {song_path} cover_path {cover_path} song_name {song_name} artist_name {artist_name} song_id {song_id}")
         
         # Get the audio duration
         audio = AudioSegment.from_file(song_path)
         duration = audio.duration_seconds
 
         # Send the song to the user
-        message = await update.message.reply_audio(audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=songName)
+        message = await update.message.reply_audio(audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=song_name)
 
         # Get the file_id
         file_id = message.audio.file_id
@@ -239,15 +240,15 @@ async def send_group_songs(update, downloaded_songs, reply_message, media_group,
     file_id_dict = {}
     prosess = 0
 
-    if len(media_group) > 11:
+    if len(media_group) > 10:
         # Split media_group into groups of 10 and send each group.
         for i in range(0, len(media_group), 10):
-            submedia_group = media_group[i:i+10]
+            sub_media_group = media_group[i:i+10]
 
             # Retry sending media group up to 5 times in case of failure.
-            for _ in range(5):
+            for _ in range(10):
                 try:
-                    await update.message.reply_media_group(media=submedia_group)
+                    await update.message.reply_media_group(media=sub_media_group)
                     break
                 except Exception as e:
                     logging.error(f"Error: {e}")
@@ -270,7 +271,7 @@ async def send_group_songs(update, downloaded_songs, reply_message, media_group,
             artist_name = song['artist']
             song_id = song['spotify_id']
 
-            logging.info(f"Sending song_path {song_path} cover_path {cover_path} song_name {songName} artist_name {artist_name} song_id {song_id}")
+            logging.info(f"Sending song_path {song_path} cover_path {cover_path} song_name {song_name} artist_name {artist_name} song_id {song_id}")
             # Get the audio duration
             audio = AudioSegment.from_file(song_path)
             duration = audio.duration_seconds
@@ -278,7 +279,7 @@ async def send_group_songs(update, downloaded_songs, reply_message, media_group,
             # Send the song to the user
             for _ in range(5):
                 try:
-                    message = await context.bot.send_audio(chat_id=TELEGRAM_CHANNEL_ID, audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=songName)
+                    message = await context.bot.send_audio(chat_id=TELEGRAM_CHANNEL_ID, audio=song_path, thumbnail=cover_path, duration=duration, performer=artist_name, title=song_name)
                     file_id = message.audio.file_id
                     break
                 except Exception as e:
@@ -352,7 +353,7 @@ async def save_song_info_to_sql(file_id_dict):
         existing_song = sql_session.query(spotify_music).filter(id == spotify_id).first()
 
         if existing_song is None:
-            song_item = spotify_music(id=spotify_id, file_id=file_id)
+            song_item = spotify_music(id=spotify_id, fileId=file_id)
             logging.info(f"Saving song with ID {spotify_id} to the database.")
             sql_session.add(song_item)
         else:

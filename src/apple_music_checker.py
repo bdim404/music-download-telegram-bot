@@ -81,7 +81,7 @@ class AppleMusicChecker:
             if song_item is not None:
 
                 # Get the file_id;
-                file_id = song_item.file_id
+                file_id = song_item.fileId
                 logging.info(f"File ID: {file_id}")
                 logging.info("Song found in the database.")
 
@@ -143,7 +143,7 @@ class AppleMusicChecker:
                 # try to found the song in the database.
                 song_item = sql_session.query(apple_music).filter_by(id=song_id).first()
                 if song_item is not None:
-                    file_id = song_item.file_id
+                    file_id = song_item.fileId
                     logging.info(f"File ID: {file_id}")
 
                     # Use file_id build InputMediaAudio, and wait for the next step to send to user.
@@ -239,7 +239,7 @@ class AppleMusicChecker:
                 # Try to found the song in the database.
                 song_item = sql_session.query(apple_music).filter_by(id=song_id).first()
                 if song_item is not None:
-                    file_id = song_item.file_id
+                    file_id = song_item.fileId
                     logging.info(f"File ID: {file_id}")
 
                     # Use file_id build InputMediaAudio, and wait for the next step to send to user.
@@ -554,7 +554,7 @@ class AppleMusicChecker:
             # Check if the song exists;
             existing_song = sql_session.query(apple_music).filter_by(id=song_id).first()
             if existing_song is None:
-                apple_music_item = apple_music(id=song_id, file_id=file_id)
+                apple_music_item = apple_music(id=song_id, fileId=file_id)
                 logging.info(f"New song: {apple_music_item}")
                 sql_session.add(apple_music_item)
                 logging.info(f"Saveing the {song_id} file_id {file_id}saved in the database.")
