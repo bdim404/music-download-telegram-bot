@@ -1,8 +1,8 @@
-from AppleMusicDownloader import Downloader
+from apple-music-downloader import Downloader
 from urllib.parse import urlparse, parse_qs
 from telegram import Update, InputMediaAudio
 from telegram.ext import CallbackContext
-from Database import apple_music, get_session
+from database import apple_music, get_session
 from sqlalchemy.orm import sessionmaker
 from config import TELEGRAM_CHANNEL_ID
 from get_cover_art import CoverFinder

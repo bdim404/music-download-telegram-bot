@@ -2,7 +2,7 @@
 from config import SPOTIPY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, TELEGRAM_CHANNEL_ID
 import time, requests, yt_dlp, json, sys, logging, spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-from Database import spotify_music, get_session
+from database import spotify_music, get_session
 from telegram import Update, InputMediaAudio
 from telegram.ext import CallbackContext
 from sqlalchemy.orm import sessionmaker
