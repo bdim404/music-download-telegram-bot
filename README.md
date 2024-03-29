@@ -11,7 +11,7 @@ An Apple Music & Spotify Music Telegram bot downloader created with Python.
 
 ## News!
 
-- Add the function of posting while downloading, you can download 100 songs playlist at a time.(29/3/2024)
+- Add the function of posting while downloading, you can download OVER 100 songs playlist at a time.(29/3/2024)
 
 ## Installation
 
