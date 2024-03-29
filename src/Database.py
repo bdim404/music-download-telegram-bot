@@ -7,16 +7,16 @@ from sqlalchemy.orm import sessionmaker
 # This is the base class of the database, we need to inherit it when we create a table;
 Base = declarative_base()
 
-# This is the table of the appleMusic, we use it to store the song information;
-class appleMusic(Base):
-    __tablename__ = 'appleMusic'
+# This is the table of the apple_music, we use it to store the song information;
+class apple_music(Base):
+    __tablename__ = 'apple_music'
     id = Column(String, index=True)
     fileId = Column(String)
     __table_args__ = (PrimaryKeyConstraint('id', 'fileId'),)
 
-# This is the table of the spotifyMusic, we use it to store the song information;
-class spotifyMusic(Base):
-    __tablename__ = 'spotifyMusic'
+# This is the table of the spotify_music, we use it to store the song information;
+class spotify_music(Base):
+    __tablename__ = 'spotify_music'
     id = Column(String, index=True)
     fileId = Column(String)
     __table_args__ = (PrimaryKeyConstraint('id', 'fileId'),)

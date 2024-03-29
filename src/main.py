@@ -3,7 +3,7 @@
 
 from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
 from AppleMusicChecker import AppleMusicChecker
-from spotifyDl import GetUrlType
+from SpotifyDownloader import get_url_type
 from telegram import Update,Message
 from dotenv import load_dotenv
 import logging,os,asyncio,re
@@ -61,10 +61,10 @@ async def handleRequest(update: Update, context):
         if "https://music.apple.com" in update.message.text :
             downloader = AppleMusicChecker()
             url = re.findall(r'(https?://\S+)', update.message.text)[0]
-            await downloader.CheckLinkType(update, context, url)
+            await downloader.check_link_type(update, context, url)
         elif "https://open.spotify.com" in update.message.text:
             url = re.findall(r'(https?://\S+)', update.message.text)[0]
-            await GetUrlType(update, context, url)
+            await get_url_type(update, context, url)
         else:
             logging.info("The message is not a link including Apple Music or Spotify.")
             await update.message.reply_text("Please send me the link of the song you want to download.")
@@ -85,10 +85,10 @@ async def DownloadSongInGroup(update: Update, context):
     if update.message.reply_to_message and "https://music.apple.com" in update.message.reply_to_message.text:
         downloader = AppleMusicChecker()
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
-        await downloader.CheckLinkType(update, context, url)
+        await downloader.check_link_type(update, context, url)
     elif update.message.reply_to_message and "https://open.spotify.com" in update.message.reply_to_message.text:
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
-        await GetUrlType(update, context, url)
+        await get_url_type(update, context, url)
     else:
         logging.info("The message is not a link including Apple Music or Spotify.")
         await update.message.reply_text("Please reply to the message containing the link of the song you want to download, if you don't know how to download a song, send /help.")

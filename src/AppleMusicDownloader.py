@@ -29,6 +29,7 @@ class Downloader:
     # Set the default values of the class;
     def __init__(
         self,
+        error: str = None,
         final_path: Path = None,
         temp_path: Path = None,
         cookies_location: Path = None,
@@ -44,6 +45,7 @@ class Downloader:
         songs_heaac: bool = None,
         **kwargs,
     ):
+        self.error = None
         self.final_path = Path("./Apple Music")
         self.temp_path = Path("./temp")
         self.cookies_location = Path(COOKIES_LOCATION)
@@ -327,61 +329,73 @@ class Downloader:
 
     # Set the get_song method;
     @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=10)
-    async def GetAlbum(self, album_id: str) -> dict:
-        response = self.session.get(f"https://api.music.apple.com/v1/catalog/us/albums/{album_id}")
-        responseJson = response.json()
-        print(responseJson)
-        albumData = responseJson["data"][0]
-        albumSongs = albumData['relationships']['tracks']['data']
+    async def get_album(self, album_id: str) -> dict:
+        try:
+            response = self.session.get(f"https://api.music.apple.com/v1/catalog/us/albums/{album_id}")
+            response.raise_for_status()  # 如果状态码表示请求失败，这行代码会抛出一个异常
+        except Exception as e:
+            self.error = e  # 在异常处理中抛出异常
+            return None
+        response_json = response.json()
+        print(response_json)
+        album_data = response_json["data"][0]
+        album_songs = album_data['relationships']['tracks']['data']
 
         songs = []
-        for song in albumSongs:
+        for song in album_songs:
             attributes = song.get('attributes', {})
-            playParams = attributes.get('playParams', {})
-            kind = playParams.get('kind')
+            play_params = attributes.get('playParams', {})
+            kind = play_params.get('kind')
             if kind != 'song':  # if kind is not 'song', skip this song.
                 continue
-            songId = song['id']
-            songs.append((songId))  # put the id and name of the song as a tuple into the list.
+            song_id = song['id']
+            songs.append((song_id))  # put the id and name of the song as a tuple into the list.
+        print(songs)
         return songs
 
     # Set the get_album method;
     @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=10)
-    async def GetPlaylist(self, playlist_id: str) -> dict:
-        response = self.session.get(
-            f"https://api.music.apple.com/v1/catalog/us/playlists/{playlist_id}",
-            params={
-                "limit[tracks]": 300,
-            },
-        )
-        responseJson = response.json()
-        playlistData = responseJson["data"][0]
-        playlistSongs = playlistData['relationships']['tracks']['data']
+    async def get_playlist(self, playlist_id: str) -> dict:
+        # try to get the playlist data from the apple music api.
+        try:
+            response = self.session.get(
+                f"https://api.music.apple.com/v1/catalog/us/playlists/{playlist_id}",
+                params={
+                    "limit[tracks]": 300, # set the limit of the tracks to 300.
+                },
+            )
+            response.raise_for_status()  # if the status code indicates that the request failed, this line of code will throw an exception.
+        except Exception as e:
+            self.error = e  
+            return None
+        response_json = response.json()
+        playlist_data = response_json["data"][0]
+        playlist_songs = playlist_data['relationships']['tracks']['data']
 
         songs = []
-        for song in playlistSongs:
+        for song in playlist_songs:
             attributes = song.get('attributes', {})
-            playParams = attributes.get('playParams', {})
-            kind = playParams.get('kind')
+            play_params = attributes.get('playParams', {})
+            kind = play_params.get('kind')
             if kind != 'song':  # if kind is not 'song', skip this song.
                 continue
-            songId = song['id']
-            songs.append((songId)) # put the id and name of the song as a tuple into the list.
+            song_id = song['id']
+            songs.append((song_id)) # put the id and name of the song as a tuple into the list.
 
         # Check if there are more songs
-        while 'next' in responseJson:
-            next_url = responseJson['next']
+        while 'next' in response_json:
+            next_url = response_json['next']
             response = self.session.get(next_url)
-            responseJson = response.json()
-            playlistSongs = responseJson['data']
+            response_json = response.json()
+            playlist_songs = response_json['data']
 
-            for song in playlistSongs:
+            for song in playlist_songs:
                 attributes = song.get('attributes', {})
-                playParams = attributes.get('playParams', {})
-                kind = playParams.get('kind')
+                play_params = attributes.get('playParams', {})
+                kind = play_params.get('kind')
                 if kind != 'song':  # if kind is not 'song', skip this song.
                     continue
-                songId = song['id']
-                songs.append((songId)) # put the id and name of the song as a tuple into the list.
+                song_id = song['id']
+                songs.append((song_id)) # put the id and name of the song as a tuple into the list.
 
         return songs
