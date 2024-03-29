@@ -315,6 +315,7 @@ class AppleMusicChecker:
         downloader.cleanup_temp_path()
         # Delete the song file;
         await self.DeleteSongFile()
+        await replyMessage.delete()
         if update.message.chat.type == "private":
             await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
 
