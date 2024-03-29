@@ -1,9 +1,9 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*
 
-from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters
-from apple-music-checker import AppleMusicChecker
-from spotify-downloader import get_url_type
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from apple_music_checker import AppleMusicChecker
+from spotify_downloader import get_url_type
 from telegram import Update,Message
 from dotenv import load_dotenv
 import logging,os,asyncio,re

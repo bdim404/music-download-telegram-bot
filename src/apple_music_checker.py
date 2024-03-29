@@ -1,4 +1,4 @@
-from apple-music-downloader import Downloader
+from apple_music_downloader import Downloader
 from urllib.parse import urlparse, parse_qs
 from telegram import Update, InputMediaAudio
 from telegram.ext import CallbackContext
