@@ -1,4 +1,4 @@
-# AMdlBOT
+# MusicDownloadBot
 
 An Apple Music & Spotify Music Telegram bot downloader created with Python.
 
