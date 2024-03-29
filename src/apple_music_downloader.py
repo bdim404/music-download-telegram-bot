@@ -332,13 +332,18 @@ class Downloader:
     async def get_album(self, album_id: str) -> dict:
         try:
             response = self.session.get(f"https://api.music.apple.com/v1/catalog/us/albums/{album_id}")
-            response.raise_for_status()  # 如果状态码表示请求失败，这行代码会抛出一个异常
+            response.raise_for_status()  # check if the status code indicates that the request failed.
         except Exception as e:
-            self.error = e  # 在异常处理中抛出异常
+            self.error = e  
             return None
         response_json = response.json()
-        print(response_json)
-        album_data = response_json["data"][0]
+        
+        # check if the response has the data key.
+        try:
+            album_data = response_json["data"][0]
+        except:
+            self.error = response_json
+
         album_songs = album_data['relationships']['tracks']['data']
 
         songs = []
@@ -369,7 +374,11 @@ class Downloader:
             self.error = e  
             return None
         response_json = response.json()
-        playlist_data = response_json["data"][0]
+        try:
+            playlist_data = response_json["data"][0]
+        except:
+            self.error = response_json
+
         playlist_songs = playlist_data['relationships']['tracks']['data']
 
         songs = []
