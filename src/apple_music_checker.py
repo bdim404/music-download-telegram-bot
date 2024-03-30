@@ -28,6 +28,8 @@ class AppleMusicChecker:
     # Check the link type;
     async def check_link_type(self, update: Update, context, url):
         logging.info("Checking the link type...")
+        url = await downloader.get_final_url(url)
+        logging.info(f"Final URL: {url}")
         url_regex_result = re.search(
             r"/([a-z]{2})/(album|playlist|song|music-video)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)",
             url,
@@ -216,7 +218,8 @@ class AppleMusicChecker:
 
         # Set the session;
         sql_session = get_session()
-        id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
+        id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*?)(?:\?i=)?([0-9a-z]*)", url).group(4)
+        id = id.split('?')[0]
         logging.info(f"ID: {id}")
 
         # Get the songs info;

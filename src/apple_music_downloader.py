@@ -15,6 +15,7 @@ import functools
 import datetime
 import ciso8601
 import requests
+import aiohttp
 import base64
 import shutil
 import m3u8
@@ -408,3 +409,11 @@ class Downloader:
                 songs.append((song_id)) # put the id and name of the song as a tuple into the list.
 
         return songs
+
+    # Get the final url after redirection
+    async def get_final_url(self, url):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise Exception(f"HTTP request failed with status {response.status}")
+                return str(response.url)
