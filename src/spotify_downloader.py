@@ -146,7 +146,7 @@ async def download_songs(update: Update, media_group, not_found_songs, not_found
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '192',
+                'preferredquality': '320',
             }],
             'default_search': 'ytsearch',
             'retries': 10, # Number of retries

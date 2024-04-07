@@ -69,7 +69,8 @@ class AppleMusicChecker:
         sql_session = get_session()
 
         # get the id.
-        id = parse_qs(urlparse(url).query)['i'][0]
+        path_parts = urlparse(url).path.split('/')
+        id = path_parts[-1] if len(path_parts) > 1 else None
         logging.info(f"ID: {id}")
         not_found_song = []
         media_group = []
@@ -123,6 +124,7 @@ class AppleMusicChecker:
 
         # get the id.
         id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
+        id = id.split('?')[0]
         logging.info(f"ID: {id}")
 
         # Get the songs info.
