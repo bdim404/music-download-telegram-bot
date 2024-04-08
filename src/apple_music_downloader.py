@@ -1,7 +1,8 @@
-from config import COOKIES_LOCATION, WVD_LOCATION, STOREFRONT_IDS, AMP_API_HOSTNAME
+from config import COOKIES_LOCATION, WVD_LOCATION, STOREFRONT_IDS, MP4_TAGS_MAP
 from pywidevine.license_protocol_pb2 import WidevinePsshData
 from http.cookiejar import MozillaCookieJar
 from pywidevine import PSSH, Cdm, Device
+from mutagen.mp4 import MP4, MP4Cover
 from xml.etree import ElementTree
 from urllib.parse import quote
 from yt_dlp import YoutubeDL
@@ -44,6 +45,7 @@ class Downloader:
         exclude_tags: str = None,
         truncate: int = None,
         songs_heaac: bool = None,
+        cover_format: str = None,
         **kwargs,
     ):
         self.error = None
@@ -51,13 +53,18 @@ class Downloader:
         self.temp_path = Path("./temp")
         self.cookies_location = Path(COOKIES_LOCATION)
         self.wvd_location = Path(WVD_LOCATION)
-        self.ffmpeg_location = "ffmpeg"
+        self.ffmpeg_location = shutil.which("ffmpeg")
         self.template_folder_album = "{album_artist}/{album}"
         self.template_folder_compilation = "Compilations/{album}"
         self.template_file_single_disc = "{track:02d} {title}"
         self.template_file_multi_disc = "{disc}-{track:02d} {title}"
         self.template_date = "%Y-%m-%dT%H:%M:%SZ"
-        self.exclude_tags = None
+        self.cover_format = cover_format
+        self.exclude_tags = (
+            [i.lower() for i in exclude_tags.split(",")]
+            if exclude_tags is not None
+            else []
+        )
         self.truncate = 50
         self.songs_flavor = "32:ctrp64" if songs_heaac else "28:ctrp256"
 
@@ -328,11 +335,51 @@ class Downloader:
         image.save(f"./CoverArt/{safe_title}.jpg")
         return f"./CoverArt/{safe_title}.jpg"
 
+    def apply_tags(self, fixed_location: Path, tags: dict, cover_url: str) -> None:
+        if tags is None:
+            raise ValueError("tags is None")
+        mp4_tags = {
+            v: [tags[k]]
+            for k, v in MP4_TAGS_MAP.items()
+            if k not in self.exclude_tags and tags.get(k) is not None
+        }
+        if not {"disc", "disc_total"} & set(self.exclude_tags) and "disc" in tags:
+            mp4_tags["disk"] = [[0, 0]]
+        if not {"track", "track_total"} & set(self.exclude_tags) and "track" in tags:
+            mp4_tags["trkn"] = [[0, 0]]
+        if "compilation" not in self.exclude_tags and "compilation" in tags:
+            mp4_tags["cpil"] = tags["compilation"]
+        if "cover" not in self.exclude_tags:
+            mp4_tags["covr"] = [
+                MP4Cover(
+                    self.get_cover(cover_url),
+                    imageformat=(
+                        MP4Cover.FORMAT_JPEG
+                        if self.cover_format == "jpg"
+                        else MP4Cover.FORMAT_PNG
+                    ),
+                )
+            ]
+        if "disc" not in self.exclude_tags and "disc" in tags:
+            mp4_tags["disk"][0][0] = tags["disc"]
+        if "disc_total" not in self.exclude_tags and "disc_total" in tags:
+            mp4_tags["disk"][0][1] = tags["disc_total"]
+        if "gapless" not in self.exclude_tags and "gapless" in tags:
+            mp4_tags["pgap"] = tags["gapless"]
+        if "track" not in self.exclude_tags and "track" in tags:
+            mp4_tags["trkn"][0][0] = tags["track"]
+        if "track_total" not in self.exclude_tags and "track_total" in tags:
+            mp4_tags["trkn"][0][1] = tags["track_total"]
+        mp4 = MP4(fixed_location)
+        mp4.clear()
+        mp4.update(mp4_tags)
+        mp4.save()
+
     # Set the get_song method;
     @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=10)
     async def get_album(self, album_id: str) -> dict:
         try:
-            response = self.session.get(f"https://api.music.apple.com/v1/catalog/us/albums/{album_id}")
+            response = self.session.get(f"https://api.music.apple.com/v1/catalog/{self.country}/albums/{album_id}")
             response.raise_for_status()  # check if the status code indicates that the request failed.
         except Exception as e:
             self.error = e  
@@ -365,7 +412,7 @@ class Downloader:
         # try to get the playlist data from the apple music api.
         try:
             response = self.session.get(
-                f"https://api.music.apple.com/v1/catalog/us/playlists/{playlist_id}",
+                f"https://api.music.apple.com/v1/catalog/{self.country}/playlists/{playlist_id}",
                 params={
                     "limit[tracks]": 300, # set the limit of the tracks to 300.
                 },

@@ -1,53 +1,129 @@
 from dotenv import load_dotenv
 import logging,os
 
+# Configure the logging;
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+logging.info("Loading the environment variables...")
+
+# Load the environment variables;
 load_dotenv()
 
-# Set the cookies.txt file;
+# Get the environment variables;
+try:
+    TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+    logging.info(f"TELEGRAM_BOT_TOKEN: {TELEGRAM_BOT_TOKEN}")
+except:
+    logging.error("The TELEGRAM_BOT_TOKEN environment variable is not set.")
+    exit(1)
+if not TELEGRAM_BOT_TOKEN:
+    logging.error("The TELEGRAM_BOT_TOKEN environment variable is empty.")
+    exit(1)
+
+try:
+    ADMIN_USER_IDS = list(map(int, os.getenv("ADMIN_USER_IDS").split(",")))
+    logging.info(f"ADMIN_USER_IDS: {ADMIN_USER_IDS}")
+except:
+    logging.error("The ADMIN_USER_IDS environment variable is not set.")
+    exit(1)
+if not ADMIN_USER_IDS:
+    logging.error("The ADMIN_USER_IDS environment variable is empty.")
+    exit(1)
+
+
+try:
+    ALLOWED_TELEGRAM_USER_IDS = list(map(int, os.getenv("ALLOWED_TELEGRAM_USER_IDS").split(",")))
+    logging.info(f"ALLOWED_TELEGRAM_USER_IDS: {ALLOWED_TELEGRAM_USER_IDS}")
+except:
+    ALLOWED_TELEGRAM_USER_IDS = []
+
+if not ALLOWED_TELEGRAM_USER_IDS:
+    logging.error("The ALLOWED_TELEGRAM_USER_IDS environment variable is empty.")
+    exit(1)
+
+# Check if the environment variables are set;
+
 try:
     COOKIES_LOCATION = os.getenv("COOKIES_LOCATION")
+    logging.info(f"COOKIES_LOCATION: {COOKIES_LOCATION}")
 except:
-    try:
-        COOKIES_LOCATION = "./cookies.txt"
-    except:
-        logging.error("The COOKIES_LOCATION environment variable is not set.")
-        exit(1)
+    logging.error("The COOKIES_LOCATION environment variable is not set.")
+    exit(1)
+if not COOKIES_LOCATION:
+    logging.error("The COOKIES_LOCATION environment variable is empty.")
+    exit(1)
 
-# Set the device.wvd file;
 try:
     WVD_LOCATION = os.getenv("WVD_LOCATION")
+    logging.info(f"WVD_LOCATION: {WVD_LOCATION}")
 except:
-    try:
-        WVD_LOCATION = "./device.wvd"
-    except:
-        logging.error("The WVD_LOCATION environment variable is not set.")
-        exit(1)
+    logging.error("The WVD_LOCATION environment variable is not set.")
+    exit(1)
+if not WVD_LOCATION:
+    logging.error("The WVD_LOCATION environment variable is empty.")
+    exit(1)
 
-
-# Set the spotify client id;
 try:
     SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+    logging.info(f"SPOTIPY_CLIENT_ID: {SPOTIPY_CLIENT_ID}")
 except:
     logging.error("The SPOTIPY_CLIENT_ID environment variable is not set.")
     exit(1)
+if not SPOTIPY_CLIENT_ID:
+    logging.error("The SPOTIPY_CLIENT_ID environment variable is empty.")
+    exit(1)
 
-# Set the spotify client secret;
 try:
     SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+    logging.info(f"SPOTIFY_CLIENT_SECRET: {SPOTIFY_CLIENT_SECRET}")
 except:
     logging.error("The SPOTIPY_CLIENT_SECRET environment variable is not set.")
     exit(1)
+if not SPOTIFY_CLIENT_SECRET:
+    logging.error("The SPOTIFY_CLIENT_SECRET environment variable is empty.")
+    exit(1)
 
-# Set the Telegram Channel ID;
 try:
     TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+    logging.info(f"TELEGRAM_CHANNEL_ID: {TELEGRAM_CHANNEL_ID}")
 except:
     logging.error("The TELEGRAM_CHANNEL_ID environment variable is not set.")
     exit(1)
-    
+if not TELEGRAM_CHANNEL_ID:
+    logging.error("The TELEGRAM_CHANNEL_ID environment variable is empty.")
+    exit(1)
+
+
+logging.info("Environment variables loaded.")
 # Set the Apple Music API hostname; 
 AMP_API_HOSTNAME = "https://amp-api.music.apple.com"
 
+# Set the Apple Music API endpoints;
+MP4_TAGS_MAP = {
+    "album": "\xa9alb",
+    "album_artist": "aART",
+    "album_id": "plID",
+    "album_sort": "soal",
+    "artist": "\xa9ART",
+    "artist_id": "atID",
+    "artist_sort": "soar",
+    "comment": "\xa9cmt",
+    "composer": "\xa9wrt",
+    "composer_id": "cmID",
+    "composer_sort": "soco",
+    "copyright": "cprt",
+    "date": "\xa9day",
+    "genre": "\xa9gen",
+    "genre_id": "geID",
+    "lyrics": "\xa9lyr",
+    "media_type": "stik",
+    "rating": "rtng",
+    "storefront": "sfID",
+    "title": "\xa9nam",
+    "title_id": "cnID",
+    "title_sort": "sonm",
+    "xid": "xid ",
+}
 
 # Set the Apple Music Storefront IDs;
 STOREFRONT_IDS = {

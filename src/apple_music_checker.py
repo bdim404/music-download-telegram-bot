@@ -69,8 +69,9 @@ class AppleMusicChecker:
         sql_session = get_session()
 
         # get the id.
-        path_parts = urlparse(url).path.split('/')
-        id = path_parts[-1] if len(path_parts) > 1 else None
+        query = urlparse(url).query
+        params = parse_qs(query)
+        id = params['i'][0] if 'i' in params else None
         logging.info(f"ID: {id}")
         not_found_song = []
         media_group = []
@@ -346,7 +347,6 @@ class AppleMusicChecker:
 
                 # Add the song info to the list;
                 songs.append((track_id, final_location, save_cover, tags['title'], tags['artist']))
-                logging.info(f"track_id: {track_id}, final_location: {final_location}, save_cover: {save_cover}, title: {tags['title']}, artist_name: {tags['artist']}")
 
                 # Get the stream url;
                 stream_url = downloader.get_stream_url_song(webplayback)
@@ -362,6 +362,10 @@ class AppleMusicChecker:
                 decrypted_location = downloader.get_decrypted_location_audio(track_id)            
                 fixed_location = downloader.get_fixed_location(track_id, ".m4a")
                 downloader.fixup_song_ffmpeg(encrypted_location, decryption_key, fixed_location)
+
+                # add the tags;
+                logging.info(f"Adding tags to {fixed_location}, {tags}, {cover_url}")
+                downloader.apply_tags(fixed_location, tags, cover_url)
 
                 # Move the song to the final location;
                 downloader.move_to_final_location(fixed_location, final_location)
@@ -403,6 +407,8 @@ class AppleMusicChecker:
                     logging.info(f"The directory {directory} does not exist")
             except PermissionError:
                 logging.info("Permission denied")
+            except OSError as e:
+                logging.info(f"Failed to delete {directory}: {e}")
             except Exception as e:
                 logging.info(f"An error occurred: {e}")
 

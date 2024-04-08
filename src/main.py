@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*
 
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_IDS, ALLOWED_TELEGRAM_USER_IDS
 from apple_music_checker import AppleMusicChecker
 from spotify_downloader import get_url_type
 from telegram import Update,Message
@@ -10,28 +11,6 @@ import logging,os,asyncio,re
 
 # Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-# Load the environment variables;
-load_dotenv()
-
-# Get the environment variables;
-try:
-    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-except:
-    logging.error("The TELEGRAM_BOT_TOKEN environment variable is not set.")
-    exit(1)
-try:
-    ADMIN_USER_IDS = list(map(int, os.getenv("ADMIN_USER_IDS").split(",")))
-except:
-    logging.error("The ADMIN_USER_IDS environment variable is not set.")
-    exit(1)
-try:
-    ALLOWED_TELEGRAM_USER_IDS = list(map(int, os.getenv("ALLOWED_TELEGRAM_USER_IDS").split(",")))
-except:
-    ALLOWED_TELEGRAM_USER_IDS = []
-
-logging.info("Environment variables loaded.")
-
 
 
 # Start message handler;
