@@ -2,6 +2,8 @@
 
 An Apple Music & Spotify Music Telegram bot downloader created with Python.
 
+You can find the private version [here](https://github.com/bdim404/music-download-telegram-bot/tree/private)
+
 ## Features
 
 - **Download songs** in 256kbps AAC or 64kbps HE-AAC for high-quality audio experience.
