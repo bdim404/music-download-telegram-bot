@@ -89,13 +89,17 @@ class Downloader:
             }
         )
         home_page = self.session.get("https://beta.music.apple.com").text
-        index_js_uri = re.search(r"/(assets/index-legacy-[^/]+\.js)", home_page).group(
-            1
-        )
+        index_js_match = re.search(r"/(assets/index(?:-legacy)?-[^/]+\.js)", home_page)
+        if not index_js_match:
+            raise Exception("Could not find index.js file in Apple Music page. The page structure may have changed.")
+        index_js_uri = index_js_match.group(1)
         index_js_page = self.session.get(
             f"https://beta.music.apple.com/{index_js_uri}"
         ).text
-        token = re.search('(?=eyJh)(.*?)(?=")', index_js_page).group(1)
+        token_match = re.search('(?=eyJh)(.*?)(?=")', index_js_page)
+        if not token_match:
+            raise Exception("Could not find authorization token in index.js. The file structure may have changed.")
+        token = token_match.group(1)
         self.session.headers.update({"authorization": f"Bearer {token}"})
         self.country = self.session.cookies.get_dict()["itua"]
         self.storefront = STOREFRONT_IDS[self.country.upper()]
