@@ -21,20 +21,11 @@ sentry_sdk.init(
 
 
 def setLogLevel(level):
-    """
-    Sets the log level of the global logger to the passed level
-    :param level: the log level
-    """
     logging.getLogger().setLevel(level)
 
 
 def get_tokens():
-    """
-    Checks if the required API keys for Spotify has been set.
-    :param name: Name to be cleaned up
-    :return string containing the cleaned name
-    """
-    load_dotenv()  # load environment variables from .env file
+    load_dotenv()
     log.debug("Checking for tokens")
     CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
     CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")

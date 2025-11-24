@@ -16,16 +16,12 @@ import asyncio
 import logging
 import os
 
-# Configure the downloader;
 downloader = Downloader()
-# Configure the session;
 downloader.setup_session()
-# Configure the CDM;
 downloader.setup_cdm()
 
 class AppleMusicChecker:
 
-    # Check the link type;
     async def check_link_type(self, update: Update, context, url):
         logging.info("Checking the link type...")
         url = await downloader.get_final_url(url)
@@ -37,12 +33,10 @@ class AppleMusicChecker:
         catalog_resource_type = url_regex_result.group(2)
         catalog_id = url_regex_result.group(5) or url_regex_result.group(4)
 
-        # Check the link type.
         if catalog_resource_type == "song" or url_regex_result.group(5):
             logging.info("The link is a song.")
             await self.check_song_in_sql(update, url, context)
 
-        # Ignone music-video.
         elif catalog_resource_type == "music-video":
             logging.info("The link is a music-video.")
             await update.message.reply_text("Sorry, I can't download music vedio.")
@@ -51,7 +45,6 @@ class AppleMusicChecker:
             logging.info("The link is an album.")
             await self.check_album_in_sql(update, url, context)
 
-        # Ignone playlist in group chat.
         elif catalog_resource_type == "playlist":
             if update.message.chat.type == "private":
                 logging.info("The link is a playlist.")
@@ -61,22 +54,17 @@ class AppleMusicChecker:
         else:
             raise Exception("Invalid URL")
 
-    # Check if the song has been downloaded before from sql.
     async def check_song_in_sql(self, update: Update, url, context):
         reply_message = await update.message.reply_text("Finding the song in the database...")
 
-        # connect to the database.
         sql_session = get_session()
 
-        # Parse the URL
         parsed_url = urlparse(url)
 
         if '/song/' in parsed_url.path:
-            # If the URL is a song URL, get the ID from the path
             path_parts = parsed_url.path.split('/')
             id = path_parts[-1] if len(path_parts) > 1 else None
         else:
-            # If the URL is not a song URL, get the ID from the query parameters
             params = parse_qs(parsed_url.query)
             id = params['i'][0] if 'i' in params else None
 
@@ -84,26 +72,21 @@ class AppleMusicChecker:
         not_found_song = []
         media_group = []
 
-        # Check if the song has been downloaded before from sql.
         try:
             not_found_fount = 0
 
-            # try to found the song in the database.
             song_item = sql_session.query(apple_music).filter_by(id=id).first()
             if song_item is not None:
 
-                # Get the file_id;
                 file_id = song_item.fileId
                 logging.info(f"File ID: {file_id}")
                 logging.info("Song found in the database.")
 
-                # Use file_id build InputMediaAudio, and wait for the next step to send to user.
                 await update.message.reply_audio(audio=file_id)
                 logging.info("Song sent to the user.")
                 await reply_message.edit_text("Find out, sent to you!")
                 await reply_message.delete()
 
-                # if the chat type is private, send the donate message to the user.
                 if update.message.chat.type == "private":
                     await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
                 return
@@ -111,35 +94,28 @@ class AppleMusicChecker:
                 song_not_found_id = id
                 not_found_fount += 1
 
-                # Remember the song that was not found.
                 not_found_song.append((song_not_found_id))
                 logging.info(f"No song item found for ID: {id}")
         except:
             pass
         finally:
 
-            # Close the session;
             sql_session.close()
 
         await self.download_song(update, reply_message, not_found_song, not_found_fount, context, media_group)
 
 
-    # Check if the album has been downloaded before from sql.
     async def check_album_in_sql(self, update: Update, url, context):
         reply_message = await update.message.reply_text("Finding the album in the database...")
 
-        # set the session.
         sql_session = get_session()
 
-        # get the id.
         id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*)(?:\?i=)?([0-9a-z]*)", url).group(4)
         id = id.split('?')[0]
         logging.info(f"ID: {id}")
 
-        # Get the songs info.
         songs = await downloader.get_album(id)
 
-        # check the apple music api connect.
         if songs is not None:
             pass
         else:
@@ -153,17 +129,14 @@ class AppleMusicChecker:
             not_found_fount = 0  
             for song_id in songs:
 
-                # try to found the song in the database.
                 song_item = sql_session.query(apple_music).filter_by(id=song_id).first()
                 if song_item is not None:
                     file_id = song_item.fileId
                     logging.info(f"File ID: {file_id}")
 
-                    # Use file_id build InputMediaAudio, and wait for the next step to send to user.
                     media = InputMediaAudio(media=file_id)
                     media_group.append(media)
                 else:
-                    # Remember the song that was not found;
                     song_not_found_id = song_id
                     not_found_song.append((song_not_found_id))
                     logging.info(f"No song item found for ID: {song_id}")
@@ -171,14 +144,11 @@ class AppleMusicChecker:
                     not_found_fount += 1  
                     all_songs_found = False
                     continue
-            # if all songs found, send the songs to the user here.
             if all_songs_found:
                 if len(media_group) > 10:
-                    # Split media_group into groups of 10 and send each group.
                     for i in range(0, len(media_group), 10):
                         sub_media_group = media_group[i:i+10]
 
-                        # Retry sending media group up to 5 times in case of failure.
                         for _ in range(5):
                             try:
                                 await update.message.reply_media_group(media=sub_media_group)
@@ -192,7 +162,6 @@ class AppleMusicChecker:
                             except:
                                 time.sleep(5)
                 else:
-                    # If media_group has less than 10 items, send it directly.
                     for _ in range(5):
                         try:
                             await update.message.reply_media_group(media=media_group)
@@ -208,7 +177,6 @@ class AppleMusicChecker:
 
                 await reply_message.delete()
 
-                # if the chat type is private, send the donate message to the user.
                 if update.message.chat.type == "private":
                     await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
                 return
@@ -218,25 +186,20 @@ class AppleMusicChecker:
             logging.error(f"Error: {e}")
         finally:
 
-            # Close the session;
             sql_session.close()
 
         await self.download_song(update, reply_message, not_found_song, not_found_fount, context, media_group)
 
-    # Check if the playlist has been downloaded before from sql;    
     async def check_playlist_in_sql(self, update: Update, url, context):
         reply_message = await update.message.reply_text("Finding the playlist in the database...")
 
-        # Set the session;
         sql_session = get_session()
         id = re.search(r"/([a-z]{2})/(album|playlist|song)/(.*)/([a-z]{2}\..*|[0-9]*?)(?:\?i=)?([0-9a-z]*)", url).group(4)
         id = id.split('?')[0]
         logging.info(f"ID: {id}")
 
-        # Get the songs info;
         songs = await downloader.get_playlist(id)
 
-        # Check the apple music api connect;
         if songs is not None:
             pass
         else:
@@ -250,18 +213,15 @@ class AppleMusicChecker:
             not_found_fount = 0  # 添加计数器
             for song_id in songs:
 
-                # Try to found the song in the database.
                 song_item = sql_session.query(apple_music).filter_by(id=song_id).first()
                 if song_item is not None:
                     file_id = song_item.fileId
                     logging.info(f"File ID: {file_id}")
 
-                    # Use file_id build InputMediaAudio, and wait for the next step to send to user.
                     media = InputMediaAudio(media=file_id)
                     media_group.append(media)
                 else:
 
-                    # Remember the song that was not found;
                     song_not_found_id = song_id
                     not_found_song.append((song_not_found_id))
                     logging.info(f"No song item found for ID: {song_id}")
@@ -272,11 +232,9 @@ class AppleMusicChecker:
             if all_songs_found:
                 if len(media_group) > 10:
 
-                    # Split media_group into groups of 10 and send each group.
                     for i in range(0, len(media_group), 10):
                         sub_media_group = media_group[i:i+10]
 
-                        # Retry sending media group up to 5 times in case of failure.
                         for _ in range(5):
                             try:
                                 await update.message.reply_media_group(media=sub_media_group)
@@ -291,7 +249,6 @@ class AppleMusicChecker:
                                 time.sleep(5)
                                 continue
                 else:
-                    # If media_group has less than 10 items, send it directly.
                     for _ in range(5):
                         try:
                             await update.message.reply_media_group(media=media_group)
@@ -307,7 +264,6 @@ class AppleMusicChecker:
 
                 await reply_message.delete()
 
-                # if the chat type is private, send the donate message to the user.
                 if update.message.chat.type == "private":
                     await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
 
@@ -318,68 +274,52 @@ class AppleMusicChecker:
             logging.error(f"Error: {e}")
         finally:
 
-            # Close the session;
             sql_session.close()
         logging.info(f"not_found_song: {not_found_song}")
 
 
         await self.download_song(update, reply_message, not_found_song, not_found_fount, context, media_group)
 
-    # Download the song;
     async def download_song(self, update: Update, reply_message, not_found_song, not_found_fount, context, media_group):
         not_found_fountTotal = 0
 
-        # Update the message;
         if not_found_fount == 1:
             await reply_message.edit_text("Donwloading the song...")
         else:
             await reply_message.edit_text(f"Donwloading {not_found_fountTotal}/{not_found_fount} songs...")
 
-        # Download the not found song;
         songs = []
         for track_id in not_found_song:
             logging.info(f"Downloading song {track_id}...")
             try:
-                # Get the song info;
                 webplayback = downloader.get_webplayback(track_id)
 
-                # Get the cover art;
                 cover_url = downloader.get_cover_url(webplayback)
 
-                # Get the tags;
                 tags = downloader.get_tags_song(webplayback)
 
-                # Save the cover art;
                 save_cover = downloader.save_cover(tags, cover_url)
                 final_location = downloader.get_final_location(tags)
 
-                # Add the song info to the list;
                 songs.append((track_id, final_location, save_cover, tags['title'], tags['artist']))
 
-                # Get the stream url;
                 stream_url = downloader.get_stream_url_song(webplayback)
 
-                # Get the decryption key;
                 decryption_key = downloader.get_decryption_key_song(stream_url, track_id)
 
-                # Download the song;
                 encrypted_location = downloader.get_encrypted_location_audio(track_id)
                 downloader.download_ytdlp(encrypted_location, stream_url)
 
-                # Decrypt the song;
                 decrypted_location = downloader.get_decrypted_location_audio(track_id)            
                 fixed_location = downloader.get_fixed_location(track_id, ".m4a")
                 downloader.fixup_song_ffmpeg(encrypted_location, decryption_key, fixed_location)
 
-                # add the tags;
                 logging.info(f"Adding tags to {fixed_location}, {tags}, {cover_url}")
                 downloader.apply_tags(fixed_location, tags, cover_url)
 
-                # Move the song to the final location;
                 downloader.move_to_final_location(fixed_location, final_location)
                 not_found_fountTotal += 1
 
-                # Update the message;
                 await reply_message.edit_text(f"Donwloading {not_found_fountTotal}/{not_found_fount} songs...")
 
                 if not_found_fountTotal % 10 == 0:
@@ -391,19 +331,15 @@ class AppleMusicChecker:
             await self.send_song(update, songs, reply_message, not_found_fount, media_group, context)
         logging.info("Downloaded the song.")
 
-        # Cleanup the temp path;
         downloader.cleanup_temp_path()
-        # Delete the song file;
         await self.delete_song_file()
         await reply_message.delete()
 
-        # if the chat type is private, send the donate message to the user.
         if update.message.chat.type == "private":
             await update.message.reply_text("Enjoy your music! If you like this bot, consider donating to the developer. /donate")
 
         return
 
-    # Delete the song file;
     async def delete_song_file(self):
         directories = ["./Apple Music", "./temp", "./CoverArt"]
         for directory in directories:
@@ -420,11 +356,9 @@ class AppleMusicChecker:
             except Exception as e:
                 logging.info(f"An error occurred: {e}")
 
-    # Send the song to the user; 
     async def send_song(self, update: Update, songs, reply_message, not_found_fount, media_group, context):
         await reply_message.edit_text("Download successfully, sending to you! ")
 
-        # Based on the number of songs, send the song to the user;
         if not_found_fount == 1:
             file_id_dict = await self.send_singe_song(update, songs, reply_message)
         else:
@@ -432,25 +366,20 @@ class AppleMusicChecker:
 
         logging.info(f"File ID dict: {file_id_dict}")
 
-        # Save the song info to sql;    
         await self.save_song_info_to_sql(file_id_dict)
     
-    # Send the single song to the user;
     async def send_singe_song(self, update: Update, songs, reply_message):
         try:
             file_id_dict = {}
             for song_id, song_path, cover_art_path, song_name, artist_name in songs:
                
-                # Get the audio duration;
                 audiotime = AudioSegment.from_file(song_path)
                 duration = audiotime.duration_seconds
                 
                 logging.info(f"audio={song_path}, thumbnail={cover_art_path}, duration={duration}, performer={artist_name}, title={song_name}")
-                # Send the song to the user;
                 for _ in range(5):
                     try:
                         message = await update.message.reply_audio(audio=song_path, thumbnail=cover_art_path, duration=duration, performer=artist_name, title=song_name)
-                        # Get the file_id;
                         file_id = message.audio.file_id
                         file_id_dict[song_id] = file_id
                         break
@@ -469,18 +398,14 @@ class AppleMusicChecker:
             logging.error(f"An error occurred while sending the song")
             return {}
 
-    # Send the group song to the user;
     async def send_group_song(self, update: Update, songs, reply_message, media_group, context):
         file_id_dict = {}
         prosess = 0
 
-        # if the media_group has more than 10 items, send the media_group first and clear the media_group.
         if len(media_group) > 10:
-            # Split media_group into groups of 10 and send each group.
             for i in range(0, len(media_group), 10):
                 sub_media_group = media_group[i:i+10]
 
-                # Retry sending media group up to 5 times in case of failure.
                 for _ in range(5):
                     try:
                         await update.message.reply_media_group(media=sub_media_group)
@@ -497,11 +422,9 @@ class AppleMusicChecker:
 
         for song_id, song_path, cover_art_path, song_name, artist_name in songs:
             try:
-                # Get the audio duration;
                 audio = AudioSegment.from_file(song_path)
                 duration = audio.duration_seconds
 
-                # Send to channel one byu one，and get file_id.
                 for _ in range(5):
                     try:
                         message = await context.bot.send_audio(chat_id=TELEGRAM_CHANNEL_ID, audio=song_path, thumbnail=cover_art_path, duration=duration, performer=artist_name, title=song_name)
@@ -513,7 +436,6 @@ class AppleMusicChecker:
                             time.sleep(5)
                             continue
 
-                # Use file_id build InputMediaAudio.
                 media = InputMediaAudio(media=file_id)
                 media_group.append(media)
                 file_id_dict[song_id] = file_id
@@ -524,7 +446,6 @@ class AppleMusicChecker:
                 if len(media_group) == 10:
                     for _ in range(5):
                         try:
-                            # If media_group has 10 items, send them and clear media_group.
                             await update.message.reply_media_group(media=media_group)
                             media_group.clear()
                             break
@@ -542,7 +463,6 @@ class AppleMusicChecker:
 
         await reply_message.edit_text("Loaded successfully, sending to you!")
 
-        # Send remaining songs in media_group.
         if media_group:
             for _ in range(3):
                 try:
@@ -562,15 +482,12 @@ class AppleMusicChecker:
         logging.info(f"File ID dict: {file_id_dict}")
         return file_id_dict
 
-    #stone the song info to sql;
     async def save_song_info_to_sql(self, file_id_dict):
         sql_session = get_session()
 
         logging.info(f"song info: {file_id_dict}")
 
-        # Get the song info;    
         for song_id, file_id in file_id_dict.items():
-            # Check if the song exists;
             existing_song = sql_session.query(apple_music).filter_by(id=song_id).first()
             if existing_song is None:
                 apple_music_item = apple_music(id=song_id, fileId=file_id)

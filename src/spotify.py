@@ -5,13 +5,6 @@ from rich.progress import Progress
 
 
 def fetch_tracks(sp, item_type, item_id):
-    """
-    Fetches tracks from the provided item_id.
-    :param sp: Spotify client
-    :param item_type: Type of item being requested for: album/playlist/track
-    :param item_id: id of the item
-    :return Dictionary of song and artist
-    """
     songs_list = []
     offset = 0
     songs_fetched = 0
@@ -165,12 +158,6 @@ def fetch_tracks(sp, item_type, item_id):
 
 
 def parse_spotify_url(url):
-    """
-    Parse the provided Spotify playlist URL and determine if it is a playlist, track or album.
-    :param url: URL to be parsed
-
-    :return tuple indicating the type and id of the item
-    """
     if url.startswith("spotify:"):
         log.error("Spotify URI was provided instead of a playlist/album/track URL.")
         sys.exit(1)
@@ -182,13 +169,6 @@ def parse_spotify_url(url):
 
 
 def get_item_name(sp, item_type, item_id):
-    """
-    Fetch the name of the item.
-    :param sp: Spotify Client
-    :param item_type: Type of the item
-    :param item_id: id of the item
-    :return String indicating the name of the item
-    """
     if item_type == "playlist":
         name = sp.playlist(playlist_id=item_id, fields="name").get("name")
     elif item_type == "album":
@@ -199,10 +179,6 @@ def get_item_name(sp, item_type, item_id):
 
 
 def validate_spotify_urls(urls):
-    """
-    Validate the URLs and determine if the item types they have are supported
-    : return a list of valid urls
-    """
     valid_urls = []
     for url in urls:
         item_type, item_id = parse_spotify_url(url)

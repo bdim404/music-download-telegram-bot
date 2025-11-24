@@ -1,15 +1,12 @@
 from dotenv import load_dotenv
 import logging,os
 
-# Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 logging.info("Loading the environment variables...")
 
-# Load the environment variables;
 load_dotenv()
 
-# Get the environment variables;
 try:
     TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
     logging.info(f"TELEGRAM_BOT_TOKEN: {TELEGRAM_BOT_TOKEN}")
@@ -97,10 +94,9 @@ if not TELEGRAM_CHANNEL_ID:
 
 
 logging.info("Environment variables loaded.")
-# Set the Apple Music API hostname; 
+
 AMP_API_HOSTNAME = "https://amp-api.music.apple.com"
 
-# Set the Apple Music API endpoints;
 MP4_TAGS_MAP = {
     "album": "\xa9alb",
     "album_artist": "aART",
@@ -127,7 +123,6 @@ MP4_TAGS_MAP = {
     "xid": "xid ",
 }
 
-# Set the Apple Music Storefront IDs;
 STOREFRONT_IDS = {
     "AE": "143481-2,32",
     "AG": "143540-2,32",

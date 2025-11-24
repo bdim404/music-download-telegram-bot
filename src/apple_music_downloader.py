@@ -23,12 +23,10 @@ import m3u8
 import re
 import os
 
-# Set the retrying decorator;
 def RetryIfConnectionError(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
 
 class Downloader:
-    # Set the default values of the class;
     def __init__(
         self,
         error: str = None,
@@ -68,7 +66,6 @@ class Downloader:
         self.truncate = 50
         self.songs_flavor = "32:ctrp64" if songs_heaac else "28:ctrp256"
 
-    # Set the setup_session method;
     def setup_session(self) -> None:
         cookies = MozillaCookieJar(self.cookies_location)
         cookies.load(ignore_discard=True, ignore_expires=True)
@@ -103,12 +100,10 @@ class Downloader:
         self.country = self.session.cookies.get_dict()["itua"]
         self.storefront = STOREFRONT_IDS[self.country.upper()]
 
-    # Set the setup_cdm method;
     def setup_cdm(self) -> None:
         self.cdm = Cdm.from_device(Device.load(self.wvd_location))
         self.cdm_session = self.cdm.open()
 
-    # Set the get_webplayback method;
     def get_webplayback(self, track_id: str) -> dict:
         webplayback_response = self.session.post(
             "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/webPlayback",
@@ -121,25 +116,20 @@ class Downloader:
             raise Exception(f"Failed to get webplayback: {webplayback_response.text}")
         return webplayback_response.json()["songList"][0]
 
-    # Set the get_stream_url_song method;
     def get_stream_url_song(self, webplayback: dict) -> str:
         return next(
             i for i in webplayback["assets"] if i["flavor"] == self.songs_flavor
         )["URL"]
 
-    # Set the get_encrypted_location_audio method;
     def get_encrypted_location_audio(self, track_id: str) -> Path:
         return self.temp_path / f"{track_id}_encrypted_audio.m4a"
 
-    # Set the get_decrypted_location_audio method;
     def get_decrypted_location_audio(self, track_id: str) -> Path:
         return self.temp_path / f"{track_id}_decrypted_audio.m4a"
 
-    # Set the get_fixed_location method;
     def get_fixed_location(self, track_id: str, file_extension: str) -> Path:
         return self.temp_path / f"{track_id}_fixed{file_extension}"
 
-    # Set the get_license_b64 method;
     def get_license_b64(self, challenge: str, track_uri: str, track_id: str) -> str:
         license_b64_response = self.session.post(
             "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/acquireWebPlaybackLicense",
@@ -156,7 +146,6 @@ class Downloader:
             raise Exception(f"Failed to get license_b64: {license_b64_response.text}")
         return license_b64_response.json()["license"]
 
-    # Set the get_decryption_key_song method;
     def get_decryption_key_song(self, stream_url: str, track_id: str) -> str:
         track_uri = m3u8.load(stream_url).keys[0].uri
         widevine_pssh_data = WidevinePsshData()
@@ -172,7 +161,6 @@ class Downloader:
             i for i in self.cdm.get_keys(self.cdm_session) if i.type == "CONTENT"
         ).key.hex()
 
-    # Set the get_tags_song method;
     def get_tags_song(self, webplayback: dict) -> dict:
         flavor = next(
             i for i in webplayback["assets"] if i["flavor"] == self.songs_flavor
@@ -216,7 +204,6 @@ class Downloader:
         }
         return tags
 
-    # Set the get_sanitized_string method;
     def get_sanitized_string(self, dirty_string: str, is_folder: bool) -> str:
         dirty_string = re.sub(r'[\\/:*?"<>|;]', "_", dirty_string)
         if is_folder:
@@ -228,7 +215,6 @@ class Downloader:
                 dirty_string = dirty_string[: self.truncate - 4]
         return dirty_string.strip()
 
-    # Set the get_final_location method;
     def get_final_location(self, tags: dict) -> Path:
         if tags.get("album"):
             final_location_folder = (
@@ -257,13 +243,11 @@ class Downloader:
             *final_location_file
         )
 
-    # Set the sanitize_date method;
     @staticmethod
     def sanitize_date(date: str, template_date: str):
         datetime_obj = ciso8601.parse_datetime(date)
         return datetime_obj.strftime(template_date)
 
-    # Set the fixup_song_ffmpeg method;
     def fixup_song_ffmpeg(
         self, encrypted_location: Path, decryption_key: str, fixed_location: Path
     ) -> None:
@@ -286,7 +270,6 @@ class Downloader:
             check=True,
         )
 
-    # Set the move_to_final_location method;
     def move_to_final_location(
         self, fixed_location: Path, final_location: Path
     ) -> None:
@@ -294,11 +277,9 @@ class Downloader:
         shutil.move(fixed_location, final_location)
         return final_location
 
-    # Set the cleanup_temp_path method;
     def cleanup_temp_path(self) -> None:
         shutil.rmtree(self.temp_path)
 
-    # Set the download_ytdlp method;
     def download_ytdlp(self, encrypted_location: Path, stream_url: str) -> None:
         with YoutubeDL(
             {
@@ -312,19 +293,16 @@ class Downloader:
         ) as ydl:
             ydl.download(stream_url)
 
-    # Set the get_cover_url method;
     def get_cover_url(self, webplayback: dict) -> str:
         return (
             webplayback["artwork-urls"]["default"]["url"].rsplit("/", 1)[0]
             + f"/300x300bb.jpg"
         )
 
-    # Set the get_cover method;
     def get_cover(self, cover_url):
         response = requests.get(cover_url)
         return response.content
 
-    # Set the save_cover method;
     def save_cover(self, tags, cover_url):
         os.makedirs('./CoverArt', exist_ok=True)
         cover_bytes = self.get_cover(cover_url)
@@ -375,18 +353,16 @@ class Downloader:
         mp4.update(mp4_tags)
         mp4.save()
 
-    # Set the get_song method;
     @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=10)
     async def get_album(self, album_id: str) -> dict:
         try:
             response = self.session.get(f"https://api.music.apple.com/v1/catalog/{self.country}/albums/{album_id}")
-            response.raise_for_status()  # check if the status code indicates that the request failed.
+            response.raise_for_status()
         except Exception as e:
-            self.error = e  
+            self.error = e
             return None
         response_json = response.json()
-        
-        # check if the response has the data key.
+
         try:
             album_data = response_json["data"][0]
         except:
@@ -399,27 +375,25 @@ class Downloader:
             attributes = song.get('attributes', {})
             play_params = attributes.get('playParams', {})
             kind = play_params.get('kind')
-            if kind != 'song':  # if kind is not 'song', skip this song.
+            if kind != 'song':
                 continue
             song_id = song['id']
-            songs.append((song_id))  # put the id and name of the song as a tuple into the list.
+            songs.append((song_id))
         print(songs)
         return songs
 
-    # Set the get_album method;
     @retry(retry_on_exception=RetryIfConnectionError, stop_max_attempt_number=10)
     async def get_playlist(self, playlist_id: str) -> dict:
-        # try to get the playlist data from the apple music api.
         try:
             response = self.session.get(
                 f"https://api.music.apple.com/v1/catalog/{self.country}/playlists/{playlist_id}",
                 params={
-                    "limit[tracks]": 300, # set the limit of the tracks to 300.
+                    "limit[tracks]": 300,
                 },
             )
-            response.raise_for_status()  # if the status code indicates that the request failed, this line of code will throw an exception.
+            response.raise_for_status()
         except Exception as e:
-            self.error = e  
+            self.error = e
             return None
         response_json = response.json()
         try:
@@ -434,12 +408,11 @@ class Downloader:
             attributes = song.get('attributes', {})
             play_params = attributes.get('playParams', {})
             kind = play_params.get('kind')
-            if kind != 'song':  # if kind is not 'song', skip this song.
+            if kind != 'song':
                 continue
             song_id = song['id']
-            songs.append((song_id)) # put the id and name of the song as a tuple into the list.
+            songs.append((song_id))
 
-        # Check if there are more songs
         while 'next' in response_json:
             next_url = response_json['next']
             response = self.session.get(next_url)
@@ -450,14 +423,13 @@ class Downloader:
                 attributes = song.get('attributes', {})
                 play_params = attributes.get('playParams', {})
                 kind = play_params.get('kind')
-                if kind != 'song':  # if kind is not 'song', skip this song.
+                if kind != 'song':
                     continue
                 song_id = song['id']
-                songs.append((song_id)) # put the id and name of the song as a tuple into the list.
+                songs.append((song_id))
 
         return songs
 
-    # Get the final url after redirection
     async def get_final_url(self, url):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:

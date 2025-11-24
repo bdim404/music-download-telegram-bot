@@ -1,4 +1,4 @@
-# !/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*
 
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
@@ -9,10 +9,8 @@ from telegram import Update,Message
 from dotenv import load_dotenv
 import logging,os,asyncio,re
 
-# Configure the logging;
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# Start message handler;
 async def handleStartMessage(update, context):
     userId = update.message.from_user.id
     logging.info(f"User {userId} started the bot.")
@@ -24,7 +22,6 @@ async def handleStartMessage(update, context):
         await update.message.reply_text("Sorry, you are not allowed to use this bot, please contact admin to get the permission.")
     return
 
-# Request handler;
 async def handleRequest(update: Update, context):
     userId = update.message.from_user.id
     logging.info(f"User {userId} sent a message.")
@@ -33,8 +30,6 @@ async def handleRequest(update: Update, context):
             await update.message.reply_text("Sorry, you are not allowed to use this bot, please contact admin to get the permission.")
             return
 
-
-    # Check if the message is a link including Apple Music;
     if update.message.chat.type == "private":
         if "https://music.apple.com/" in update.message.text :
             downloader = AppleMusicChecker()
@@ -44,7 +39,6 @@ async def handleRequest(update: Update, context):
             url = re.findall(r'(https?://\S+)', update.message.text)[0]
             await get_url_type(update, context, url)
         else:
-            logging.info("The message is not a link including Apple Music or Spotify.")
             await update.message.reply_text("Please send me the link of the song from Apple Music or Spotify you want to download.")
 
 async def donate(update: Update, context):
@@ -54,12 +48,10 @@ async def DownloadSongInGroup(update: Update, context):
     chatId = update.message.chat.id
     logging.info(f"Group {chatId} send a command.")
 
-   # Log the reply_to_message.text and text
     if update.message.reply_to_message:
         logging.info(f"reply_to_message.text: {update.message.reply_to_message.text}")
     logging.info(f"text: {update.message.text}")
 
-    # Check if the message is a link including Apple Music;
     if update.message.reply_to_message and "https://music.apple.com/" in update.message.reply_to_message.text:
         downloader = AppleMusicChecker()
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
@@ -68,7 +60,6 @@ async def DownloadSongInGroup(update: Update, context):
         url = re.findall(r'(https?://\S+)', update.message.reply_to_message.text)[0]
         await get_url_type(update, context, url)
     else:
-        logging.info("The message is not a link including Apple Music or Spotify.")
         await update.message.reply_text("Please reply to the message containing the link of the song you want to download, if you don't know how to download a song, send /help.")
 
 async def help(update: Update, context):
