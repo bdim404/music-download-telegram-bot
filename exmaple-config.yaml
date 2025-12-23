@@ -1,0 +1,20 @@
+bot_token: "YOUR_BOT_TOKEN"
+cookies_path: "./cookies.txt"
+
+# Whitelist for users and groups
+whitelist_users:
+  - 1234567890
+  - 987654321
+
+whitelist_groups: 
+  - -1234567890123
+
+
+# Limits
+max_concurrent_per_user: 2
+max_concurrent_global: 5
+max_file_size_mb: 50
+
+# Paths
+database_path: "./data/cache.db"
+temp_path: "./data/temp"
