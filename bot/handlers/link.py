@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, FSInputFile
 from telegram.ext import ContextTypes
 from telegram.error import TimedOut, NetworkError
 from pathlib import Path
@@ -343,10 +343,11 @@ async def handle_album_media_group(
             try:
                 metadata = entry['metadata']
                 if entry.get('needs_upload'):
+                    upload_source = entry.get('file_path') or entry['file_id']
                     message = await sender.send_audio(
                         context,
                         chat_id,
-                        entry['file_id'],
+                        upload_source,
                         metadata
                     )
                     if message and message.audio:
@@ -468,15 +469,25 @@ async def handle_album_media_group(
     send_failures = 0
     try:
         await safe_edit_status(status_msg, f"已准备 {len(prepared_entries)} 首歌曲, 正在上传...")
-        media_group = [
-            await sender.build_input_media_audio(
+        media_group = []
+        for entry in prepared_entries:
+            media_source = entry['file_id']
+            file_path = entry.get('file_path')
+
+            if entry.get('needs_upload') and file_path:
+                media_source = FSInputFile(file_path)
+            elif file_path and Path(file_path).exists():
+                media_source = FSInputFile(file_path)
+
+            include_thumbnail = not entry.get('is_cached') and not entry.get('needs_upload')
+
+            media = await sender.build_input_media_audio(
                 entry['metadata'],
-                entry['file_id'],
-                file_path=entry.get('file_path'),
-                include_thumbnail=not entry.get('is_cached')
+                media_source,
+                file_path=file_path,
+                include_thumbnail=include_thumbnail
             )
-            for entry in prepared_entries
-        ]
+            media_group.append(media)
 
         responses = await context.bot.send_media_group(
             chat_id=chat_id,
