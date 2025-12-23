@@ -357,26 +357,20 @@ async def handle_album_media_group(
         apple_music_id = metadata['apple_music_id']
 
         cached = await cache.get_cached_song(apple_music_id)
+        if cached and cached.get('file_id'):
+            prepared_entries.append({
+                'metadata': metadata,
+                'file_id': cached['file_id'],
+                'is_cached': True
+            })
+            continue
 
         file_path = None
+        acquired = False
         
         try:
             await concurrency.acquire(user_id)
-
-            if cached:
-                channel_message = await sender.send_cached_audio(
-                    context,
-                    archive_channel,
-                    cached['file_id'],
-                    cached
-                )
-                file_id = channel_message.audio.file_id if channel_message and channel_message.audio else cached['file_id']
-                prepared_entries.append({
-                    'metadata': metadata,
-                    'file_id': file_id,
-                    'is_cached': True
-                })
-                continue
+            acquired = True
 
             file_path = await downloader.download_track(item)
             path_obj = Path(file_path)
@@ -422,7 +416,8 @@ async def handle_album_media_group(
             if file_path and Path(file_path).exists():
                 Path(file_path).unlink()
         finally:
-            concurrency.release(user_id)
+            if acquired:
+                concurrency.release(user_id)
 
     if not prepared_entries:
         cleanup_entries(prepared_entries)
