@@ -128,6 +128,10 @@ class DownloaderService:
         cover_url = None
         if download_item.cover_url_template:
             cover_url = download_item.cover_url_template.format(w=1200, h=1200)
+        elif download_item.media_metadata:
+            artwork = download_item.media_metadata.get('attributes', {}).get('artwork', {})
+            if artwork and artwork.get('url'):
+                cover_url = artwork['url'].format(w=1200, h=1200)
 
         return {
             'apple_music_id': download_item.media_metadata['id'],
