@@ -27,7 +27,7 @@ class SenderService:
                 performer=metadata['artist'],
                 duration=duration,
                 thumbnail=thumbnail,
-                caption=f"{metadata['title']} - {metadata['artist']}\n{metadata.get('album', '')}"
+                caption=f"{metadata['title']} - {metadata['artist']}"
             )
 
         return message
@@ -42,7 +42,7 @@ class SenderService:
         message = await context.bot.send_audio(
             chat_id=chat_id,
             audio=file_id,
-            caption=f"✓ {metadata['title']} - {metadata['artist']} (Cached)"
+            caption=f"{metadata['title']} - {metadata['artist']}"
         )
 
         return message
