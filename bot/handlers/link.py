@@ -73,8 +73,18 @@ async def safe_delete_user_message(user_msg):
 
 
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    url = update.message.text.strip()
+    message = update.effective_message
+    if not message or not message.text:
+        logger.info("Ignoring update without text message")
+        return
+
+    user = update.effective_user
+    if not user:
+        logger.info("Ignoring update without user")
+        return
+
+    user_id = user.id
+    url = message.text.strip()
     chat_id = update.effective_chat.id
 
     downloader = context.bot_data['downloader']
@@ -101,7 +111,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = None
     if has_apple_music_domain(url):
-        status_msg = await send_message_with_retry(update.message, "正在验证链接...")
+        status_msg = await send_message_with_retry(message, "正在验证链接...")
 
     url_info = downloader.parse_url(url)
     if not url_info:
@@ -109,7 +119,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status_msg:
             await safe_edit_status(status_msg, error_text)
         else:
-            await send_message_with_retry(update.message, error_text)
+            await send_message_with_retry(message, error_text)
         return
 
     is_album_request = (
@@ -126,7 +136,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not download_queue:
             await send_message_with_retry(
-                update.message,
+                message,
                 "Unable to fetch song information. Please check the URL and try again."
             )
             return
@@ -494,7 +504,7 @@ async def handle_album_media_group(
                 media_source = entry['file_id']
 
             file_path = entry.get('file_path')
-            include_thumbnail = not entry.get('is_cached') and not entry.get('needs_upload')
+            include_thumbnail = entry.get('needs_upload', False)
 
             media = await sender.build_input_media_audio(
                 entry['metadata'],
