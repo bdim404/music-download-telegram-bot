@@ -329,6 +329,10 @@ async def handle_album_media_group(
     def cleanup_entries(entries):
         for entry in entries:
             try:
+                file_handle = entry.get('file_handle')
+                if file_handle and not file_handle.closed:
+                    file_handle.close()
+
                 file_path = entry.get('file_path')
                 if file_path:
                     path_obj = Path(file_path)
@@ -336,6 +340,19 @@ async def handle_album_media_group(
                         path_obj.unlink()
             except Exception as e:
                 logger.warning(f"Failed to clean up temp file: {e}")
+
+    def prepare_input_file(entry):
+        file_path = entry.get('file_path')
+        if not file_path:
+            raise FileNotFoundError("No file path available for upload")
+
+        path_obj = Path(file_path)
+        if not path_obj.exists():
+            raise FileNotFoundError(f"File not found at: {file_path}")
+
+        file_handle = open(file_path, 'rb')
+        entry['file_handle'] = file_handle
+        return InputFile(file_handle, filename=path_obj.name, read_file_handle=False)
 
     async def send_entries_individually(entries):
         processed = 0
@@ -471,14 +488,12 @@ async def handle_album_media_group(
         await safe_edit_status(status_msg, f"已准备 {len(prepared_entries)} 首歌曲, 正在上传...")
         media_group = []
         for entry in prepared_entries:
-            media_source = entry['file_id']
+            if entry.get('needs_upload'):
+                media_source = prepare_input_file(entry)
+            else:
+                media_source = entry['file_id']
+
             file_path = entry.get('file_path')
-
-            if entry.get('needs_upload') and file_path:
-                media_source = InputFile(file_path)
-            elif file_path and Path(file_path).exists():
-                media_source = InputFile(file_path)
-
             include_thumbnail = not entry.get('is_cached') and not entry.get('needs_upload')
 
             media = await sender.build_input_media_audio(
