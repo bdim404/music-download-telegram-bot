@@ -147,7 +147,6 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
             update.effective_user.username,
             update.effective_user.first_name
         )
-        await safe_delete_user_message(update.message)
         return
 
     file_path = None
@@ -189,7 +188,6 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         await safe_delete_status(status_msg)
-        await safe_delete_user_message(update.message)
 
     except FileTooLargeError as e:
         await safe_delete_status(status_msg)
@@ -346,4 +344,3 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         status_msg,
         f"完成! 已处理: {progress_counter['processed']}个, 失败: {progress_counter['failed']}个"
     )
-    await safe_delete_user_message(update.message)

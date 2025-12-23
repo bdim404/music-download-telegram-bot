@@ -23,20 +23,39 @@ class SenderService:
         duration = metadata.get('duration_ms', 0) // 1000
         thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
 
-        with open(file_path, 'rb') as audio_file:
-            message = await context.bot.send_audio(
-                chat_id=chat_id,
-                audio=audio_file,
-                title=metadata['title'],
-                performer=metadata['artist'],
-                duration=duration,
-                thumbnail=thumbnail
-            )
+        try:
+            with open(file_path, 'rb') as audio_file:
+                message = await context.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=audio_file,
+                    title=metadata['title'],
+                    performer=metadata['artist'],
+                    duration=duration,
+                    thumbnail=thumbnail
+                )
 
-        cover_status = "with cover" if thumbnail else "without cover"
-        logger.info(f"Successfully sent audio '{metadata['title']}' by '{metadata['artist']}' {cover_status}")
+            cover_status = "with cover" if thumbnail else "without cover"
+            logger.info(f"Successfully sent audio '{metadata['title']}' by '{metadata['artist']}' {cover_status}")
 
-        return message
+            return message
+        except Exception as e:
+            logger.error(f"Failed to send audio '{metadata['title']}' with thumbnail: {type(e).__name__}: {e}")
+
+            if thumbnail:
+                logger.info(f"Retrying without thumbnail for '{metadata['title']}'")
+                with open(file_path, 'rb') as audio_file:
+                    message = await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        title=metadata['title'],
+                        performer=metadata['artist'],
+                        duration=duration,
+                        thumbnail=None
+                    )
+                logger.info(f"Successfully sent audio '{metadata['title']}' without cover")
+                return message
+            else:
+                raise
 
     async def send_cached_audio(
         self,
@@ -48,19 +67,37 @@ class SenderService:
         duration = metadata.get('duration_ms', 0) // 1000
         thumbnail = await self._get_thumbnail(metadata.get('cover_url'), None, metadata)
 
-        message = await context.bot.send_audio(
-            chat_id=chat_id,
-            audio=file_id,
-            title=metadata.get('title'),
-            performer=metadata.get('artist'),
-            duration=duration,
-            thumbnail=thumbnail
-        )
+        try:
+            message = await context.bot.send_audio(
+                chat_id=chat_id,
+                audio=file_id,
+                title=metadata.get('title'),
+                performer=metadata.get('artist'),
+                duration=duration,
+                thumbnail=thumbnail
+            )
 
-        cover_status = "with cover" if thumbnail else "without cover"
-        logger.info(f"Successfully sent cached audio '{metadata.get('title')}' by '{metadata.get('artist')}' {cover_status}")
+            cover_status = "with cover" if thumbnail else "without cover"
+            logger.info(f"Successfully sent cached audio '{metadata.get('title')}' by '{metadata.get('artist')}' {cover_status}")
 
-        return message
+            return message
+        except Exception as e:
+            logger.error(f"Failed to send cached audio '{metadata.get('title')}' with thumbnail: {type(e).__name__}: {e}")
+
+            if thumbnail:
+                logger.info(f"Retrying without thumbnail for '{metadata.get('title')}'")
+                message = await context.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=file_id,
+                    title=metadata.get('title'),
+                    performer=metadata.get('artist'),
+                    duration=duration,
+                    thumbnail=None
+                )
+                logger.info(f"Successfully sent cached audio '{metadata.get('title')}' without cover")
+                return message
+            else:
+                raise
 
     async def _get_thumbnail(
         self,
@@ -219,16 +256,28 @@ class SenderService:
                 logger.debug("No artwork URL in iTunes result")
                 return None
 
-            high_res_url = artwork_url.replace('100x100bb.jpg', '1200x1200bb.jpg')
-            logger.info(f"Downloading cover from iTunes for '{title}' by '{artist}'")
+            logger.debug(f"Original iTunes artwork URL: {artwork_url}")
 
-            cover_data = await self._download_cover(high_res_url)
-            if cover_data:
-                logger.info(f"Successfully downloaded iTunes cover for '{title}' by '{artist}'")
-            else:
-                logger.warning(f"Failed to download iTunes cover image for '{title}' by '{artist}'")
+            for size in ['600x600', '320x320', '100x100']:
+                cover_url = re.sub(r'\d+x\d+bb\.', f'{size}bb.', artwork_url)
+                logger.debug(f"Trying {size} URL: {cover_url}")
 
-            return cover_data
+                cover_data = await self._download_cover(cover_url)
+                if not cover_data:
+                    logger.debug(f"Failed to download {size} cover")
+                    continue
+
+                size_kb = len(cover_data) / 1024
+                logger.debug(f"Downloaded {size} cover (size: {size_kb:.1f} KB)")
+
+                if size_kb <= 200:
+                    logger.info(f"Successfully got iTunes cover for '{title}' by '{artist}' ({size}, {size_kb:.1f} KB)")
+                    return cover_data
+                else:
+                    logger.warning(f"Cover {size} too large ({size_kb:.1f} KB > 200 KB), trying smaller size")
+
+            logger.warning(f"All iTunes cover sizes exceed 200 KB limit for '{title}' by '{artist}'")
+            return None
 
         except httpx.HTTPStatusError as e:
             logger.warning(f"HTTP error searching iTunes for '{title}' by '{artist}': {e.response.status_code}")
