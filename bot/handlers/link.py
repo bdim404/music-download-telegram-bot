@@ -1,4 +1,4 @@
-from telegram import Update, FSInputFile
+from telegram import Update, InputFile
 from telegram.ext import ContextTypes
 from telegram.error import TimedOut, NetworkError
 from pathlib import Path
@@ -475,9 +475,9 @@ async def handle_album_media_group(
             file_path = entry.get('file_path')
 
             if entry.get('needs_upload') and file_path:
-                media_source = FSInputFile(file_path)
+                media_source = InputFile(file_path)
             elif file_path and Path(file_path).exists():
-                media_source = FSInputFile(file_path)
+                media_source = InputFile(file_path)
 
             include_thumbnail = not entry.get('is_cached') and not entry.get('needs_upload')
 
