@@ -9,6 +9,7 @@ class Config:
     cookies_path: str = "./cookies.txt"
     whitelist_users: list[int] = field(default_factory=list)
     whitelist_groups: list[int] = field(default_factory=list)
+    archive_channel: str = "@applemusicachive"
 
     max_concurrent_per_user: int = 2
     max_concurrent_global: int = 5

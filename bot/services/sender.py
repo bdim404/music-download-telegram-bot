@@ -104,9 +104,12 @@ class SenderService:
         metadata: dict,
         media,
         file_path: Optional[str] = None,
+        include_thumbnail: bool = True,
     ) -> InputMediaAudio:
         duration = metadata.get('duration_ms', 0) // 1000
-        thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
+        thumbnail = None
+        if include_thumbnail:
+            thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
 
         return InputMediaAudio(
             media=media,
