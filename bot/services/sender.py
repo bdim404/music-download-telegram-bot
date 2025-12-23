@@ -1,6 +1,8 @@
 import httpx
 import logging
+import asyncio
 from telegram import Message, InputMediaAudio
+from telegram.error import TimedOut, NetworkError
 from telegram.ext import ContextTypes
 from pathlib import Path
 from typing import Optional
@@ -13,6 +15,44 @@ logger = logging.getLogger(__name__)
 
 
 class SenderService:
+    async def _send_audio_with_retry(
+        self,
+        context: ContextTypes.DEFAULT_TYPE,
+        chat_id: int,
+        file_path: str,
+        metadata: dict,
+        duration: int,
+        thumbnail: Optional[bytes],
+        max_retries: int = 3
+    ) -> Message:
+        for attempt in range(max_retries):
+            try:
+                with open(file_path, 'rb') as audio_file:
+                    return await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        title=metadata['title'],
+                        performer=metadata['artist'],
+                        duration=duration,
+                        thumbnail=thumbnail
+                    )
+            except (TimedOut, NetworkError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(
+                        f"Failed to send audio '{metadata['title']}' "
+                        f"after {max_retries} attempts: {type(e).__name__}: {e}"
+                    )
+                    raise
+                logger.warning(
+                    f"Retry {attempt + 1}/{max_retries} sending audio '{metadata['title']}': {e}"
+                )
+                await asyncio.sleep(2 ** attempt)
+            except Exception as e:
+                logger.error(
+                    f"Failed to send audio '{metadata['title']}': {type(e).__name__}: {e}"
+                )
+                raise
+
     async def send_audio(
         self,
         context: ContextTypes.DEFAULT_TYPE,
@@ -23,39 +63,19 @@ class SenderService:
         duration = metadata.get('duration_ms', 0) // 1000
         thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
 
-        try:
-            with open(file_path, 'rb') as audio_file:
-                message = await context.bot.send_audio(
-                    chat_id=chat_id,
-                    audio=audio_file,
-                    title=metadata['title'],
-                    performer=metadata['artist'],
-                    duration=duration,
-                    thumbnail=thumbnail
-                )
+        message = await self._send_audio_with_retry(
+            context=context,
+            chat_id=chat_id,
+            file_path=file_path,
+            metadata=metadata,
+            duration=duration,
+            thumbnail=thumbnail
+        )
 
-            cover_status = "with cover" if thumbnail else "without cover"
-            logger.info(f"Successfully sent audio '{metadata['title']}' by '{metadata['artist']}' {cover_status}")
+        cover_status = "with cover" if thumbnail else "without cover"
+        logger.info(f"Successfully sent audio '{metadata['title']}' by '{metadata['artist']}' {cover_status}")
 
-            return message
-        except Exception as e:
-            logger.error(f"Failed to send audio '{metadata['title']}' with thumbnail: {type(e).__name__}: {e}")
-
-            if thumbnail:
-                logger.info(f"Retrying without thumbnail for '{metadata['title']}'")
-                with open(file_path, 'rb') as audio_file:
-                    message = await context.bot.send_audio(
-                        chat_id=chat_id,
-                        audio=audio_file,
-                        title=metadata['title'],
-                        performer=metadata['artist'],
-                        duration=duration,
-                        thumbnail=None
-                    )
-                logger.info(f"Successfully sent audio '{metadata['title']}' without cover")
-                return message
-            else:
-                raise
+        return message
 
     async def send_cached_audio(
         self,
