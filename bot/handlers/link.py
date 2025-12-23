@@ -43,6 +43,22 @@ async def safe_delete_status(status_msg):
         logger.warning(f"Failed to delete status message: {e}")
 
 
+def has_apple_music_domain(url: str) -> bool:
+    url_lower = url.lower()
+    return 'music.apple.com' in url_lower or 'apple.co' in url_lower
+
+
+async def safe_delete_user_message(user_msg):
+    try:
+        await user_msg.delete()
+    except (TimedOut, NetworkError) as e:
+        logger.warning(f"Failed to delete user message: {e}")
+    except Exception as e:
+        if "message can't be deleted" not in str(e).lower() and \
+           "message to delete not found" not in str(e).lower():
+            logger.warning(f"Failed to delete user message: {e}")
+
+
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     url = update.message.text.strip()
@@ -57,13 +73,21 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await whitelist(update, context):
         return
 
+    status_msg = None
+    if has_apple_music_domain(url):
+        status_msg = await send_message_with_retry(update.message, "正在验证链接...")
+
     url_info = downloader.parse_url(url)
     if not url_info:
-        await send_message_with_retry(
-            update.message,
-            "Invalid Apple Music URL. Please send a valid song, album, or playlist link."
-        )
+        error_text = "Invalid Apple Music URL. Please send a valid song, album, or playlist link."
+        if status_msg:
+            await safe_edit_status(status_msg, error_text)
+        else:
+            await send_message_with_retry(update.message, error_text)
         return
+
+    if status_msg:
+        await safe_edit_status(status_msg, "正在获取歌曲信息...")
 
     try:
         download_queue = await downloader.get_download_queue(url_info)
@@ -76,9 +100,9 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if len(download_queue) > 1:
-            await handle_collection(update, context, download_queue)
+            await handle_collection(update, context, download_queue, status_msg)
         else:
-            await handle_single_track(update, context, download_queue[0])
+            await handle_single_track(update, context, download_queue[0], status_msg)
 
     except Exception as e:
         logger.exception(f"Error processing link: {url}")
@@ -91,7 +115,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error("Failed to send error message to user")
 
 
-async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE, item):
+async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE, item, status_msg=None):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
     sender = context.bot_data['sender']
@@ -110,7 +134,8 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     apple_music_id = item.media_metadata['id']
 
-    status_msg = await send_message_with_retry(update.message, "正在获取歌曲信息...")
+    if not status_msg:
+        status_msg = await send_message_with_retry(update.message, "正在获取歌曲信息...")
 
     cached = await cache.get_cached_song(apple_music_id)
     if cached:
@@ -122,6 +147,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
             update.effective_user.username,
             update.effective_user.first_name
         )
+        await safe_delete_user_message(update.message)
         return
 
     file_path = None
@@ -163,6 +189,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         await safe_delete_status(status_msg)
+        await safe_delete_user_message(update.message)
 
     except FileTooLargeError as e:
         await safe_delete_status(status_msg)
@@ -246,7 +273,7 @@ async def process_track_item(
         progress_counter['failed'] += 1
 
 
-async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list):
+async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list, status_msg=None):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
     sender = context.bot_data['sender']
@@ -257,10 +284,11 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     chat_id = update.effective_chat.id
 
     total = len(download_queue)
-    status_msg = await send_message_with_retry(
-        update.message,
-        "正在获取歌曲信息..."
-    )
+    if not status_msg:
+        status_msg = await send_message_with_retry(
+            update.message,
+            "正在获取歌曲信息..."
+        )
 
     progress_counter = {'processed': 0, 'failed': 0}
 
@@ -318,3 +346,4 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         status_msg,
         f"完成! 已处理: {progress_counter['processed']}个, 失败: {progress_counter['failed']}个"
     )
+    await safe_delete_user_message(update.message)

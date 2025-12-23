@@ -33,6 +33,9 @@ class SenderService:
                 thumbnail=thumbnail
             )
 
+        cover_status = "with cover" if thumbnail else "without cover"
+        logger.info(f"Successfully sent audio '{metadata['title']}' by '{metadata['artist']}' {cover_status}")
+
         return message
 
     async def send_cached_audio(
@@ -54,6 +57,9 @@ class SenderService:
             thumbnail=thumbnail
         )
 
+        cover_status = "with cover" if thumbnail else "without cover"
+        logger.info(f"Successfully sent cached audio '{metadata.get('title')}' by '{metadata.get('artist')}' {cover_status}")
+
         return message
 
     async def _get_thumbnail(
@@ -62,28 +68,23 @@ class SenderService:
         file_path: Optional[str] = None,
         metadata: Optional[dict] = None
     ) -> Optional[bytes]:
-        if cover_url:
-            thumbnail = await self._download_cover(cover_url)
-            if thumbnail:
-                return thumbnail
-            logger.debug("Falling back to file extraction after URL download failed")
-
-        if file_path:
-            thumbnail = self._extract_cover_from_file(file_path)
-            if thumbnail:
-                return thumbnail
-            logger.debug("Falling back to iTunes Search after file extraction failed")
+        song_info = ""
+        if metadata:
+            song_info = f" for '{metadata.get('title', 'Unknown')}' by '{metadata.get('artist', 'Unknown')}'"
 
         if metadata and metadata.get('title') and metadata.get('artist'):
+            logger.debug(f"Attempting iTunes Search{song_info}")
             thumbnail = await self._search_itunes_cover(
                 title=metadata['title'],
                 artist=metadata['artist'],
                 album=metadata.get('album')
             )
             if thumbnail:
+                logger.info(f"Successfully got cover from iTunes Search{song_info}")
                 return thumbnail
+            logger.warning(f"iTunes Search failed{song_info}")
 
-        logger.debug("No thumbnail available after all fallback attempts")
+        logger.warning(f"No thumbnail available{song_info}")
         return None
 
     async def _download_cover(self, cover_url: str) -> Optional[bytes]:
@@ -91,16 +92,17 @@ class SenderService:
             async with httpx.AsyncClient() as client:
                 response = await client.get(cover_url, timeout=10.0)
                 response.raise_for_status()
-                logger.info(f"Downloaded cover from URL (size: {len(response.content)} bytes)")
+                size_kb = len(response.content) / 1024
+                logger.debug(f"Downloaded cover from URL (size: {size_kb:.1f} KB)")
                 return response.content
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error downloading cover: {e.response.status_code}")
+            logger.warning(f"HTTP error {e.response.status_code} downloading cover from {cover_url}")
             return None
         except httpx.TimeoutException:
-            logger.warning("Timeout downloading cover image")
+            logger.warning(f"Timeout downloading cover from {cover_url}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error downloading cover: {type(e).__name__}: {e}")
+            logger.error(f"Unexpected error downloading cover from {cover_url}: {type(e).__name__}: {e}")
             return None
 
     def _extract_cover_from_file(self, file_path: str) -> Optional[bytes]:
@@ -108,13 +110,14 @@ class SenderService:
             audio = MP4(file_path)
             if audio.tags and 'covr' in audio.tags:
                 cover_data = audio.tags['covr'][0]
-                logger.info(f"Extracted cover from file (size: {len(cover_data)} bytes)")
+                size_kb = len(cover_data) / 1024
+                logger.debug(f"Extracted cover from file (size: {size_kb:.1f} KB)")
                 return bytes(cover_data)
             else:
-                logger.debug("No cover found in file metadata")
+                logger.debug(f"No cover found in file metadata: {file_path}")
                 return None
         except Exception as e:
-            logger.warning(f"Failed to extract cover from file: {type(e).__name__}: {e}")
+            logger.warning(f"Failed to extract cover from file {file_path}: {type(e).__name__}: {e}")
             return None
 
     def _normalize_string(self, text: str) -> str:
@@ -186,20 +189,30 @@ class SenderService:
             encoded_query = quote_plus(query)
             url = f"https://itunes.apple.com/search?term={encoded_query}&media=music&entity=song&limit=5"
 
+            logger.debug(f"Searching iTunes with query: '{query}'")
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, timeout=8.0)
                 response.raise_for_status()
                 data = response.json()
 
             results = data.get('results', [])
+            result_count = len(results)
+
             if not results:
-                logger.debug(f"No iTunes results for '{title}' by '{artist}'")
+                logger.debug(f"iTunes returned 0 results for '{title}' by '{artist}'")
                 return None
+
+            logger.debug(f"iTunes returned {result_count} results for '{title}' by '{artist}'")
 
             best_match = self._find_best_match(results, title, artist)
             if not best_match:
-                logger.debug("No suitable iTunes match found")
+                logger.debug(f"No suitable iTunes match found among {result_count} results")
                 return None
+
+            matched_title = best_match.get('trackName', 'Unknown')
+            matched_artist = best_match.get('artistName', 'Unknown')
+            logger.debug(f"Best iTunes match: '{matched_title}' by '{matched_artist}'")
 
             artwork_url = best_match.get('artworkUrl100')
             if not artwork_url:
@@ -207,16 +220,22 @@ class SenderService:
                 return None
 
             high_res_url = artwork_url.replace('100x100bb.jpg', '1200x1200bb.jpg')
-            logger.info(f"Found iTunes cover for '{title}' by '{artist}'")
+            logger.info(f"Downloading cover from iTunes for '{title}' by '{artist}'")
 
-            return await self._download_cover(high_res_url)
+            cover_data = await self._download_cover(high_res_url)
+            if cover_data:
+                logger.info(f"Successfully downloaded iTunes cover for '{title}' by '{artist}'")
+            else:
+                logger.warning(f"Failed to download iTunes cover image for '{title}' by '{artist}'")
+
+            return cover_data
 
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error searching iTunes: {e.response.status_code}")
+            logger.warning(f"HTTP error searching iTunes for '{title}' by '{artist}': {e.response.status_code}")
             return None
         except httpx.TimeoutException:
-            logger.warning("Timeout searching iTunes")
+            logger.warning(f"Timeout searching iTunes for '{title}' by '{artist}'")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error searching iTunes: {type(e).__name__}: {e}")
+            logger.error(f"Unexpected error searching iTunes for '{title}' by '{artist}': {type(e).__name__}: {e}")
             return None
