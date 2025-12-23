@@ -1,28 +1,28 @@
 # Apple Music Download Telegram Bot
 
-基于 gamdl 的 Apple Music 下载 Telegram 机器人。
+A Telegram bot for downloading Apple Music tracks, albums, and playlists, powered by gamdl.
 
-## 功能特性
+## Features
 
-- 支持下载 Apple Music 歌曲、专辑和播放列表
-- SQLite 数据库缓存，避免重复下载
-- 白名单用户访问控制
-- 并发下载限制（每用户 2 个，全局 5 个）
-- 文件大小限制（默认 50MB）
-- 临时文件自动清理
-- 完整的元数据支持（封面、时长、艺术家等）
+- Download Apple Music songs, albums, and playlists
+- SQLite database caching to avoid duplicate downloads
+- Whitelist-based user access control
+- Concurrent download limits (2 per user, 5 global)
+- File size limit (default 50MB)
+- Automatic temporary file cleanup
+- Complete metadata support (cover art, duration, artist, etc.)
 
-## 安装
+## Installation
 
-### 1. 安装依赖
+### 1. Install Python Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 安装系统依赖
+### 2. Install System Dependencies
 
-Bot 使用 pywidevine 和 mp4decrypt 进行解密，需要安装以下工具：
+The bot uses pywidevine and mp4decrypt for decryption. Install the following tools:
 
 #### macOS
 ```bash
@@ -35,47 +35,47 @@ sudo apt-get update
 sudo apt-get install bento4 ffmpeg
 ```
 
-#### 验证安装
+#### Verify Installation
 ```bash
 mp4decrypt --version
 ffmpeg -version
 ```
 
-### 3. 获取 Apple Music Cookies
+### 3. Get Apple Music Cookies
 
-Bot 需要从 Apple Music 网站导出的 cookies 来进行认证。
+The bot requires cookies exported from Apple Music website for authentication.
 
-#### 使用浏览器扩展（推荐）
+#### Using Browser Extension (Recommended)
 
-1. 安装浏览器扩展：
+1. Install browser extension:
    - Chrome: [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
    - Firefox: [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
 
-2. 访问 https://music.apple.com 并登录
-3. 确认你的 Apple Music 订阅处于激活状态
-4. 点击扩展图标，导出 cookies
-5. 将文件保存为 `cookies.txt` 并放在项目根目录
+2. Visit https://music.apple.com and log in
+3. Confirm your Apple Music subscription is active
+4. Click the extension icon and export cookies
+5. Save the file as `cookies.txt` in the project root directory
 
-#### 使用 yt-dlp
+#### Using yt-dlp
 
 ```bash
 yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://music.apple.com
 ```
 
-**注意**：
-- Cookies 通常 1-3 个月有效
-- 过期后需重新导出
-- 必须有激活的 Apple Music 订阅
+**Note**:
+- Cookies are typically valid for 1-3 months
+- Re-export after expiration
+- An active Apple Music subscription is required
 
-### 4. 配置文件
+### 4. Configuration
 
-编辑 `config.yaml` 文件：
+Edit `config.yaml`:
 
 ```yaml
-bot_token: "YOUR_BOT_TOKEN"  # 从 @BotFather 获取
-cookies_path: "./cookies.txt"  # Cookies 文件路径
+bot_token: "YOUR_BOT_TOKEN"  # Get from @BotFather
+cookies_path: "./cookies.txt"  # Path to cookies file
 
-whitelist_users:  # 允许使用的 Telegram 用户 ID
+whitelist_users:  # Telegram user IDs allowed to use the bot
   - 123456789
   - 987654321
 
@@ -87,59 +87,59 @@ database_path: "./data/cache.db"
 temp_path: "./data/temp"
 ```
 
-## 运行
+## Running
 
 ```bash
 python -m bot.main
 ```
 
-## 使用方法
+## Usage
 
-1. 启动 Bot 后，发送 `/start` 命令
-2. 发送 Apple Music 链接，例如：
-   - 单曲：`https://music.apple.com/us/album/.../1234567?i=1234568`
-   - 专辑：`https://music.apple.com/us/album/.../1234567`
-   - 播放列表：`https://music.apple.com/us/playlist/.../pl.xxx`
+1. After starting the bot, send `/start` command
+2. Send Apple Music links, for example:
+   - Single track: `https://music.apple.com/us/album/.../1234567?i=1234568`
+   - Album: `https://music.apple.com/us/album/.../1234567`
+   - Playlist: `https://music.apple.com/us/playlist/.../pl.xxx`
 
-## 项目结构
+## Project Structure
 
 ```
 bot/
-├── models/         # 数据库模型
-├── services/       # 业务逻辑服务
-├── middleware/     # 中间件（白名单、并发控制）
-├── handlers/       # 消息处理器
-└── main.py         # 主程序入口
+├── models/         # Database models
+├── services/       # Business logic services
+├── middleware/     # Middleware (whitelist, concurrency control)
+├── handlers/       # Message handlers
+└── main.py         # Main entry point
 ```
 
-## 注意事项
+## Important Notes
 
-1. 需要有效的 Apple Music 订阅
-2. Cookies 定期（1-3个月）需要重新导出
-3. 确保安装了 mp4decrypt 和 ffmpeg
-4. 确保有足够的磁盘空间用于临时文件
-5. Telegram file_id 是永久的，可以重复使用
-6. 文件超过 50MB 将被跳过
-7. 下载后的临时文件会立即删除
+1. An active Apple Music subscription is required
+2. Cookies need to be re-exported periodically (every 1-3 months)
+3. Ensure mp4decrypt and ffmpeg are installed
+4. Ensure sufficient disk space for temporary files
+5. Telegram file_id is permanent and can be reused
+6. Files larger than 50MB will be skipped
+7. Temporary files are deleted immediately after download
 
-## 常见问题
+## Troubleshooting
 
 **Q: "media-user-token" cookie not found**
-A: 确保从 https://music.apple.com 导出 cookies，并且已登录有订阅的账号
+A: Ensure you export cookies from https://music.apple.com while logged in with a subscribed account
 
 **Q: "Subscription is not active"**
-A: 检查你的 Apple Music 订阅状态是否正常
+A: Check that your Apple Music subscription is active
 
 **Q: mp4decrypt not found**
-A: 安装 Bento4 工具套件（见安装部分）
+A: Install Bento4 toolkit (see Installation section)
 
-**Q: Cookies 过期了怎么办？**
-A: 重新从浏览器导出 cookies.txt 并重启 Bot
+**Q: What if cookies expire?**
+A: Re-export cookies.txt from your browser and restart the bot
 
-## 技术栈
+## Tech Stack
 
 - python-telegram-bot - Telegram Bot API
-- aiosqlite - 异步 SQLite 数据库
-- gamdl - Apple Music 下载核心库
-- httpx - HTTP 客户端
-- mutagen - 音频元数据处理
+- aiosqlite - Async SQLite database
+- gamdl - Apple Music download core library
+- httpx - HTTP client
+- mutagen - Audio metadata processing
