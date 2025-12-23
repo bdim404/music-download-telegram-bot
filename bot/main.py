@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from pathlib import Path
-import nest_asyncio
 
 from telegram.ext import (
     Application,
@@ -10,8 +9,6 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
-
-nest_asyncio.apply()
 
 from .config import Config
 from .models.database import Database
@@ -30,6 +27,14 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+
+async def shutdown_handler(application):
+    db = application.bot_data.get('db')
+    if db:
+        logger.info("Closing database connection...")
+        await db.close()
+    logger.info("Bot shutdown complete")
 
 
 async def main():
@@ -87,8 +92,22 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, link_handler))
     application.add_error_handler(error_handler)
 
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+
     logger.info("Bot is running...")
-    await application.run_polling()
+
+    try:
+        await asyncio.Event().wait()
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Received stop signal")
+    finally:
+        logger.info("Stopping bot...")
+        await application.updater.stop()
+        await application.stop()
+        await shutdown_handler(application)
+        await application.shutdown()
 
 
 if __name__ == '__main__':

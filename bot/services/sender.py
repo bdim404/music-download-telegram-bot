@@ -30,8 +30,7 @@ class SenderService:
                 title=metadata['title'],
                 performer=metadata['artist'],
                 duration=duration,
-                thumbnail=thumbnail,
-                caption=f"{metadata['title']} - {metadata['artist']}"
+                thumbnail=thumbnail
             )
 
         return message
@@ -45,8 +44,7 @@ class SenderService:
     ) -> Message:
         message = await context.bot.send_audio(
             chat_id=chat_id,
-            audio=file_id,
-            caption=f"{metadata['title']} - {metadata['artist']}"
+            audio=file_id
         )
 
         return message

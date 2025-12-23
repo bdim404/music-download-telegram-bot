@@ -1,7 +1,6 @@
 python-telegram-bot[job-queue]==21.10
 aiosqlite==0.20.0
 pyyaml==6.0.2
-nest-asyncio>=1.6.0
 
 async-lru>=2.0.5
 httpx>=0.28.1
