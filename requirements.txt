@@ -1,0 +1,17 @@
+python-telegram-bot[job-queue]==21.10
+aiosqlite==0.20.0
+pyyaml==6.0.2
+nest-asyncio>=1.6.0
+
+async-lru>=2.0.5
+httpx>=0.28.1
+mutagen>=1.47.0
+pillow>=12.0.0
+pywidevine>=1.8.0
+yt-dlp>=2025.10.22
+m3u8>=6.0.0
+click>=8.3.0
+colorama>=0.4.6
+inquirerpy>=0.3.4
+
+gamdl
