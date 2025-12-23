@@ -342,7 +342,22 @@ async def handle_album_media_group(
         for entry in entries:
             try:
                 metadata = entry['metadata']
-                await sender.send_cached_audio(context, chat_id, entry['file_id'], metadata)
+                if entry.get('needs_upload'):
+                    message = await sender.send_audio(
+                        context,
+                        chat_id,
+                        entry['file_id'],
+                        metadata
+                    )
+                    if message and message.audio:
+                        await cache.store_song(
+                            metadata,
+                            message.audio.file_id,
+                            message.audio.file_unique_id,
+                            entry.get('file_size', 0)
+                        )
+                else:
+                    await sender.send_cached_audio(context, chat_id, entry['file_id'], metadata)
                 processed += 1
             except Exception as e:
                 logger.exception(f"Failed to send track individually: {e}")
@@ -386,29 +401,39 @@ async def handle_album_media_group(
                 path_obj.unlink()
                 continue
 
-            channel_message = await sender.send_audio(
-                context,
-                archive_channel,
-                file_path,
-                metadata
-            )
+            channel_message = None
+            try:
+                channel_message = await sender.send_audio(
+                    context,
+                    archive_channel,
+                    file_path,
+                    metadata
+                )
+            except Exception as upload_err:
+                logger.warning(f"Upload to archive channel failed, will send directly: {upload_err}")
 
-            if not channel_message or not channel_message.audio:
-                raise RuntimeError("Failed to upload track to archive channel")
+            if channel_message and channel_message.audio:
+                prepared_entries.append({
+                    'metadata': metadata,
+                    'file_id': channel_message.audio.file_id,
+                    'file_path': file_path,
+                    'file_size': file_size
+                })
 
-            prepared_entries.append({
-                'metadata': metadata,
-                'file_id': channel_message.audio.file_id,
-                'file_path': file_path,
-                'file_size': file_size
-            })
-
-            await cache.store_song(
-                metadata,
-                channel_message.audio.file_id,
-                channel_message.audio.file_unique_id,
-                file_size
-            )
+                await cache.store_song(
+                    metadata,
+                    channel_message.audio.file_id,
+                    channel_message.audio.file_unique_id,
+                    file_size
+                )
+            else:
+                prepared_entries.append({
+                    'metadata': metadata,
+                    'file_id': file_path,
+                    'file_path': file_path,
+                    'file_size': file_size,
+                    'needs_upload': True
+                })
 
         except Exception as e:
             failed += 1
@@ -447,6 +472,7 @@ async def handle_album_media_group(
             await sender.build_input_media_audio(
                 entry['metadata'],
                 entry['file_id'],
+                file_path=entry.get('file_path'),
                 include_thumbnail=not entry.get('is_cached')
             )
             for entry in prepared_entries
