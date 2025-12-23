@@ -26,6 +26,23 @@ class FileTooLargeError(Exception):
     pass
 
 
+async def safe_edit_status(status_msg, text):
+    try:
+        await status_msg.edit_text(text)
+    except (TimedOut, NetworkError) as e:
+        logger.warning(f"Failed to edit status message: {e}")
+    except Exception as e:
+        if "message is not modified" not in str(e).lower():
+            logger.warning(f"Failed to edit status message: {e}")
+
+
+async def safe_delete_status(status_msg):
+    try:
+        await status_msg.delete()
+    except (TimedOut, NetworkError) as e:
+        logger.warning(f"Failed to delete status message: {e}")
+
+
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     url = update.message.text.strip()
@@ -93,9 +110,12 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     apple_music_id = item.media_metadata['id']
 
+    status_msg = await send_message_with_retry(update.message, "正在获取歌曲信息...")
+
     cached = await cache.get_cached_song(apple_music_id)
     if cached:
         logger.info(f"Cache hit for {apple_music_id}")
+        await safe_delete_status(status_msg)
         await sender.send_cached_audio(context, chat_id, cached['file_id'], cached)
         await cache.update_user_activity(
             user_id,
@@ -108,7 +128,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await concurrency.acquire(user_id)
 
-        status_msg = await send_message_with_retry(update.message, "Downloading...")
+        await safe_edit_status(status_msg, "正在下载...")
 
         file_path = await downloader.download_track(item)
 
@@ -124,10 +144,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"Maximum size is {config.max_file_size_mb}MB."
             )
 
-        try:
-            await status_msg.edit_text("Uploading...")
-        except (TimedOut, NetworkError) as e:
-            logger.warning(f"Failed to edit status message: {e}")
+        await safe_edit_status(status_msg, "正在上传...")
 
         metadata = downloader.extract_metadata(item)
         message = await sender.send_audio(context, chat_id, file_path, metadata)
@@ -145,14 +162,13 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
             update.effective_user.first_name
         )
 
-        try:
-            await status_msg.delete()
-        except (TimedOut, NetworkError) as e:
-            logger.warning(f"Failed to delete status message: {e}")
+        await safe_delete_status(status_msg)
 
     except FileTooLargeError as e:
+        await safe_delete_status(status_msg)
         await send_message_with_retry(update.message, str(e))
     except Exception as e:
+        await safe_delete_status(status_msg)
         logger.exception(f"Error downloading track {apple_music_id}")
         try:
             await send_message_with_retry(update.message, f"Download failed: {str(e)}")
@@ -243,28 +259,35 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     total = len(download_queue)
     status_msg = await send_message_with_retry(
         update.message,
-        f"Found {total} tracks. Processing..."
+        "正在获取歌曲信息..."
     )
 
     progress_counter = {'processed': 0, 'failed': 0}
 
     async def update_progress():
+        last_text = None
         while True:
             try:
                 completed = progress_counter['processed'] + progress_counter['failed']
                 if completed < total:
-                    try:
-                        await status_msg.edit_text(
-                            f"Progress: {completed}/{total} (Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']})"
-                        )
-                    except (TimedOut, NetworkError) as e:
-                        logger.warning(f"Failed to edit status message: {e}")
+                    new_text = f"Progress: {completed}/{total} (Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']})"
+                    if new_text != last_text:
+                        try:
+                            await status_msg.edit_text(new_text)
+                            last_text = new_text
+                        except (TimedOut, NetworkError) as e:
+                            logger.warning(f"Failed to edit status message: {e}")
+                        except Exception as e:
+                            if "message is not modified" not in str(e).lower():
+                                logger.warning(f"Failed to edit status message: {e}")
                     await asyncio.sleep(2)
                 else:
                     break
             except Exception as e:
                 logger.warning(f"Error in progress update: {e}")
                 break
+
+    await safe_edit_status(status_msg, f"找到 {total} 首歌曲,正在下载...")
 
     progress_task = asyncio.create_task(update_progress())
 
@@ -291,9 +314,7 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         update.effective_user.first_name
     )
 
-    try:
-        await status_msg.edit_text(
-            f"Completed! Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']}"
-        )
-    except (TimedOut, NetworkError) as e:
-        logger.warning(f"Failed to edit final status message: {e}")
+    await safe_edit_status(
+        status_msg,
+        f"完成! 已处理: {progress_counter['processed']}个, 失败: {progress_counter['failed']}个"
+    )
