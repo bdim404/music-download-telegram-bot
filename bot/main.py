@@ -56,13 +56,13 @@ async def main():
 
     cache = CacheService(db)
     sender = SenderService()
-    whitelist = WhitelistMiddleware(config.whitelist_users)
+    whitelist = WhitelistMiddleware(config.whitelist_users, config.whitelist_groups)
     concurrency = ConcurrencyMiddleware(
         max_per_user=config.max_concurrent_per_user,
         max_global=config.max_concurrent_global
     )
 
-    logger.info(f"Whitelist: {len(config.whitelist_users)} users")
+    logger.info(f"Whitelist: {len(config.whitelist_users)} users, {len(config.whitelist_groups)} groups")
     logger.info(f"Concurrency limits: {config.max_concurrent_per_user} per user, {config.max_concurrent_global} global")
 
     Path(config.temp_path).mkdir(parents=True, exist_ok=True)

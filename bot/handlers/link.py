@@ -48,6 +48,10 @@ def has_apple_music_domain(url: str) -> bool:
     return 'music.apple.com' in url_lower or 'apple.co' in url_lower
 
 
+def is_group_chat(chat_id: int) -> bool:
+    return chat_id < 0
+
+
 async def safe_delete_user_message(user_msg):
     try:
         await user_msg.delete()
@@ -62,6 +66,7 @@ async def safe_delete_user_message(user_msg):
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     url = update.message.text.strip()
+    chat_id = update.effective_chat.id
 
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -70,8 +75,15 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     whitelist = context.bot_data['whitelist']
     config = context.bot_data['config']
 
-    if not await whitelist(update, context):
-        return
+    if is_group_chat(chat_id):
+        if not whitelist.check_group(chat_id):
+            return
+        if not has_apple_music_domain(url):
+            logger.info(f"Ignoring non-Apple Music message in group {chat_id}")
+            return
+    else:
+        if not await whitelist(update, context):
+            return
 
     status_msg = None
     if has_apple_music_domain(url):
