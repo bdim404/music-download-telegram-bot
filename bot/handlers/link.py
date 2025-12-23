@@ -4,6 +4,7 @@ from telegram.error import TimedOut, NetworkError
 from pathlib import Path
 import logging
 import asyncio
+from gamdl.downloader.constants import ALBUM_MEDIA_TYPE
 
 
 
@@ -103,6 +104,11 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_message_with_retry(update.message, error_text)
         return
 
+    is_album_request = (
+        (url_info.type in ALBUM_MEDIA_TYPE) or
+        (url_info.library_type in ALBUM_MEDIA_TYPE)
+    )
+
     if status_msg:
         await safe_edit_status(status_msg, "正在获取歌曲信息...")
 
@@ -117,7 +123,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if len(download_queue) > 1:
-            await handle_collection(update, context, download_queue, status_msg)
+            await handle_collection(update, context, download_queue, status_msg, is_album_request)
         else:
             await handle_single_track(update, context, download_queue[0], status_msg)
 
@@ -288,7 +294,191 @@ async def process_track_item(
         progress_counter['failed'] += 1
 
 
-async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list, status_msg=None):
+async def handle_album_media_group(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    download_queue: list,
+    status_msg,
+    total: int
+):
+    downloader = context.bot_data['downloader']
+    cache = context.bot_data['cache']
+    sender = context.bot_data['sender']
+    concurrency = context.bot_data['concurrency']
+    config = context.bot_data['config']
+
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    await safe_edit_status(status_msg, f"找到 {total} 首歌曲, 将以合辑发送...")
+
+    prepared_entries = []
+    failed = 0
+    max_size = config.max_file_size_mb * 1024 * 1024
+
+    def cleanup_entries(entries):
+        for entry in entries:
+            if entry.get('is_cached'):
+                continue
+
+            try:
+                file_handle = entry.get('file_handle')
+                if file_handle and not file_handle.closed:
+                    file_handle.close()
+
+                file_path = entry.get('file_path')
+                if file_path:
+                    path_obj = Path(file_path)
+                    if path_obj.exists():
+                        path_obj.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp file: {e}")
+
+    async def send_entries_individually(entries):
+        processed = 0
+        for entry in entries:
+            try:
+                if entry.get('is_cached'):
+                    cached = entry['cached']
+                    await sender.send_cached_audio(context, chat_id, cached['file_id'], cached)
+                else:
+                    metadata = entry['metadata']
+                    message = await sender.send_audio(context, chat_id, entry['file_path'], metadata)
+                    await cache.store_song(
+                        metadata,
+                        message.audio.file_id,
+                        message.audio.file_unique_id,
+                        entry['file_size']
+                    )
+                processed += 1
+            except Exception as e:
+                logger.exception(f"Failed to send track individually: {e}")
+        return processed
+
+    for item in download_queue:
+        if item.error:
+            failed += 1
+            continue
+
+        metadata = downloader.extract_metadata(item)
+        apple_music_id = metadata['apple_music_id']
+
+        cached = await cache.get_cached_song(apple_music_id)
+        if cached:
+            media = await sender.build_input_media_audio(cached, cached['file_id'])
+            prepared_entries.append({
+                'is_cached': True,
+                'media': media,
+                'cached': cached
+            })
+            continue
+
+        file_path = None
+        file_handle = None
+
+        try:
+            await concurrency.acquire(user_id)
+
+            file_path = await downloader.download_track(item)
+            path_obj = Path(file_path)
+
+            if not path_obj.exists():
+                raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
+
+            file_size = path_obj.stat().st_size
+
+            if file_size > max_size:
+                logger.warning(f"Skipping {metadata['title']}: file too large for group send")
+                failed += 1
+                path_obj.unlink()
+                continue
+
+            file_handle = open(file_path, 'rb')
+            media = await sender.build_input_media_audio(metadata, file_handle, file_path=file_path)
+
+            prepared_entries.append({
+                'is_cached': False,
+                'media': media,
+                'metadata': metadata,
+                'file_path': file_path,
+                'file_handle': file_handle,
+                'file_size': file_size
+            })
+
+        except Exception as e:
+            failed += 1
+            logger.exception(f"Error preparing track for album group: {e}")
+            if file_handle and not file_handle.closed:
+                file_handle.close()
+            if file_path and Path(file_path).exists():
+                Path(file_path).unlink()
+        finally:
+            concurrency.release(user_id)
+
+    if not prepared_entries:
+        cleanup_entries(prepared_entries)
+        await safe_edit_status(status_msg, f"完成! 已处理: 0个, 失败: {failed}")
+        return
+
+    if len(prepared_entries) < 2:
+        await safe_edit_status(status_msg, "可发送歌曲少于2首，逐条发送...")
+        processed = await send_entries_individually(prepared_entries)
+        cleanup_entries(prepared_entries)
+
+        failed_total = failed + (len(prepared_entries) - processed)
+        await cache.update_user_activity(
+            user_id,
+            update.effective_user.username,
+            update.effective_user.first_name
+        )
+        await safe_edit_status(status_msg, f"完成! 已处理: {processed}个, 失败: {failed_total}")
+        return
+
+    processed = 0
+    send_failures = 0
+    try:
+        await safe_edit_status(status_msg, f"已准备 {len(prepared_entries)} 首歌曲, 正在上传...")
+        responses = await context.bot.send_media_group(
+            chat_id=chat_id,
+            media=[entry['media'] for entry in prepared_entries]
+        )
+
+        processed = len(responses)
+        if processed < len(prepared_entries):
+            send_failures = len(prepared_entries) - processed
+
+        for message, entry in zip(responses, prepared_entries):
+            if not entry.get('is_cached'):
+                metadata = entry['metadata']
+                await cache.store_song(
+                    metadata,
+                    message.audio.file_id,
+                    message.audio.file_unique_id,
+                    entry['file_size']
+                )
+
+    except Exception as e:
+        logger.exception(f"Failed to send media group, falling back to individual sends: {e}")
+        processed = await send_entries_individually(prepared_entries)
+        send_failures = len(prepared_entries) - processed
+    finally:
+        cleanup_entries(prepared_entries)
+
+    failed_total = failed + send_failures
+
+    await cache.update_user_activity(
+        user_id,
+        update.effective_user.username,
+        update.effective_user.first_name
+    )
+
+    await safe_edit_status(
+        status_msg,
+        f"完成! 已处理: {processed}个, 失败: {failed_total}"
+    )
+
+
+async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list, status_msg=None, is_album: bool = False):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
     sender = context.bot_data['sender']
@@ -299,6 +489,9 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     chat_id = update.effective_chat.id
 
     total = len(download_queue)
+    if is_album and 1 < total <= 10:
+        await handle_album_media_group(update, context, download_queue, status_msg, total)
+        return
     if not status_msg:
         status_msg = await send_message_with_retry(
             update.message,

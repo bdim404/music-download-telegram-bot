@@ -1,6 +1,6 @@
 import httpx
 import logging
-from telegram import Message
+from telegram import Message, InputMediaAudio
 from telegram.ext import ContextTypes
 from pathlib import Path
 from typing import Optional
@@ -98,6 +98,23 @@ class SenderService:
                 return message
             else:
                 raise
+
+    async def build_input_media_audio(
+        self,
+        metadata: dict,
+        media,
+        file_path: Optional[str] = None,
+    ) -> InputMediaAudio:
+        duration = metadata.get('duration_ms', 0) // 1000
+        thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
+
+        return InputMediaAudio(
+            media=media,
+            title=metadata.get('title'),
+            performer=metadata.get('artist'),
+            duration=duration,
+            thumbnail=thumbnail
+        )
 
     async def _get_thumbnail(
         self,
