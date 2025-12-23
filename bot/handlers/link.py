@@ -5,7 +5,6 @@ from pathlib import Path
 import logging
 import asyncio
 
-from ..middleware.concurrency import TooManyUserDownloadsError, ServerBusyError
 
 
 logger = logging.getLogger(__name__)
@@ -151,10 +150,6 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
         except (TimedOut, NetworkError) as e:
             logger.warning(f"Failed to delete status message: {e}")
 
-    except TooManyUserDownloadsError as e:
-        await send_message_with_retry(update.message, str(e))
-    except ServerBusyError as e:
-        await send_message_with_retry(update.message, str(e))
     except FileTooLargeError as e:
         await send_message_with_retry(update.message, str(e))
     except Exception as e:

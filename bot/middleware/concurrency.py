@@ -1,14 +1,6 @@
 import asyncio
 
 
-class TooManyUserDownloadsError(Exception):
-    pass
-
-
-class ServerBusyError(Exception):
-    pass
-
-
 class ConcurrencyMiddleware:
     def __init__(self, max_per_user: int = 2, max_global: int = 5):
         self.max_per_user = max_per_user
@@ -23,17 +15,6 @@ class ConcurrencyMiddleware:
 
     async def acquire(self, user_id: int):
         user_sem = self._get_user_semaphore(user_id)
-
-        if user_sem.locked():
-            raise TooManyUserDownloadsError(
-                f"You already have {self.max_per_user} active downloads. Please wait."
-            )
-
-        if self.global_semaphore.locked():
-            raise ServerBusyError(
-                "Server is at capacity. Please try again in a moment."
-            )
-
         await user_sem.acquire()
         await self.global_semaphore.acquire()
 
