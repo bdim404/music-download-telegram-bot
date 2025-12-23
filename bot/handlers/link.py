@@ -76,11 +76,16 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = context.bot_data['config']
 
     if is_group_chat(chat_id):
+        logger.info(f"Group message detected: chat_id={chat_id}, user_id={user_id}")
+        logger.info(f"Whitelisted groups: {whitelist.whitelist_groups}")
         if not whitelist.check_group(chat_id):
+            logger.info(f"Group {chat_id} not in whitelist, ignoring")
             return
+        logger.info(f"Group {chat_id} is whitelisted, checking for Apple Music domain")
         if not has_apple_music_domain(url):
             logger.info(f"Ignoring non-Apple Music message in group {chat_id}")
             return
+        logger.info(f"Processing Apple Music link in group {chat_id}")
     else:
         if not await whitelist(update, context):
             return
