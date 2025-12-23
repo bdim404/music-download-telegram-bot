@@ -72,6 +72,12 @@ async def safe_delete_user_message(user_msg):
             logger.warning(f"Failed to delete user message: {e}")
 
 
+def format_track_label(item) -> str:
+    title = getattr(getattr(item, "media_tags", None), "title", None) or "未知歌曲"
+    artist = getattr(getattr(item, "media_tags", None), "artist", None) or "未知歌手"
+    return f"{title} - {artist}"
+
+
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text:
@@ -195,7 +201,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await concurrency.acquire(user_id)
 
-        await safe_edit_status(status_msg, "正在下载...")
+        await safe_edit_status(status_msg, f"正在下载: {format_track_label(item)}")
 
         file_path = await downloader.download_track(item)
 
@@ -278,6 +284,7 @@ async def process_track_item(
         try:
             await concurrency.acquire(user_id)
 
+            progress_counter['current'] = format_track_label(item)
             file_path = await downloader.download_track(item)
 
             if not file_path or not Path(file_path).exists():
@@ -379,13 +386,17 @@ async def handle_album_media_group(
                 logger.exception(f"Failed to send track individually: {e}")
         return processed
 
-    for item in download_queue:
+    for idx, item in enumerate(download_queue, 1):
         if item.error:
             failed += 1
             continue
 
         metadata = downloader.extract_metadata(item)
         apple_music_id = metadata['apple_music_id']
+        await safe_edit_status(
+            status_msg,
+            f"正在准备合辑: {idx}/{total}\n正在处理: {metadata['title']} - {metadata['artist']}"
+        )
 
         cached = await cache.get_cached_song(apple_music_id)
         if cached and cached.get('file_id'):
@@ -564,7 +575,7 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             "正在获取歌曲信息..."
         )
 
-    progress_counter = {'processed': 0, 'failed': 0}
+    progress_counter = {'processed': 0, 'failed': 0, 'current': None}
 
     async def update_progress():
         last_text = None
@@ -572,7 +583,13 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             try:
                 completed = progress_counter['processed'] + progress_counter['failed']
                 if completed < total:
-                    new_text = f"Progress: {completed}/{total} (Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']})"
+                    current = progress_counter.get('current')
+                    current_text = f"\n当前: {current}" if current else ""
+                    new_text = (
+                        f"下载中: {completed}/{total} "
+                        f"(成功 {progress_counter['processed']}, 失败 {progress_counter['failed']})"
+                        f"{current_text}"
+                    )
                     if new_text != last_text:
                         try:
                             await status_msg.edit_text(new_text)
