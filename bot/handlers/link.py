@@ -169,6 +169,72 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
             Path(file_path).unlink()
 
 
+async def process_track_item(
+    item,
+    idx: int,
+    total: int,
+    user_id: int,
+    chat_id: int,
+    downloader,
+    cache,
+    sender,
+    concurrency,
+    config,
+    context,
+    progress_counter: dict
+):
+    if item.error:
+        progress_counter['failed'] += 1
+        return
+
+    try:
+        apple_music_id = item.media_metadata['id']
+
+        cached = await cache.get_cached_song(apple_music_id)
+        if cached:
+            await sender.send_cached_audio(context, chat_id, cached['file_id'], cached)
+            progress_counter['processed'] += 1
+            return
+
+        file_path = None
+        try:
+            await concurrency.acquire(user_id)
+
+            file_path = await downloader.download_track(item)
+
+            if not file_path or not Path(file_path).exists():
+                raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
+
+            file_size = Path(file_path).stat().st_size
+            max_size = config.max_file_size_mb * 1024 * 1024
+
+            if file_size > max_size:
+                logger.warning(f"Skipping {item.media_tags.title}: file too large")
+                progress_counter['failed'] += 1
+                return
+
+            metadata = downloader.extract_metadata(item)
+            message = await sender.send_audio(context, chat_id, file_path, metadata)
+
+            await cache.store_song(
+                metadata,
+                message.audio.file_id,
+                message.audio.file_unique_id,
+                file_size
+            )
+
+            progress_counter['processed'] += 1
+
+        finally:
+            concurrency.release(user_id)
+            if file_path and Path(file_path).exists():
+                Path(file_path).unlink()
+
+    except Exception as e:
+        logger.exception(f"Error processing track {idx}/{total}")
+        progress_counter['failed'] += 1
+
+
 async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -185,66 +251,44 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         f"Found {total} tracks. Processing..."
     )
 
-    processed = 0
-    failed = 0
+    progress_counter = {'processed': 0, 'failed': 0}
 
-    for idx, item in enumerate(download_queue, 1):
-        if item.error:
-            failed += 1
-            continue
-
-        try:
+    async def update_progress():
+        while True:
             try:
-                await status_msg.edit_text(
-                    f"Processing {idx}/{total}: {item.media_tags.title}"
-                )
-            except (TimedOut, NetworkError) as e:
-                logger.warning(f"Failed to edit status message: {e}")
+                completed = progress_counter['processed'] + progress_counter['failed']
+                if completed < total:
+                    try:
+                        await status_msg.edit_text(
+                            f"Progress: {completed}/{total} (Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']})"
+                        )
+                    except (TimedOut, NetworkError) as e:
+                        logger.warning(f"Failed to edit status message: {e}")
+                    await asyncio.sleep(2)
+                else:
+                    break
+            except Exception as e:
+                logger.warning(f"Error in progress update: {e}")
+                break
 
-            apple_music_id = item.media_metadata['id']
+    progress_task = asyncio.create_task(update_progress())
 
-            cached = await cache.get_cached_song(apple_music_id)
-            if cached:
-                await sender.send_cached_audio(context, chat_id, cached['file_id'], cached)
-                processed += 1
-            else:
-                file_path = None
-                try:
-                    await concurrency.acquire(user_id)
+    tasks = [
+        process_track_item(
+            item, idx, total, user_id, chat_id,
+            downloader, cache, sender, concurrency, config, context,
+            progress_counter
+        )
+        for idx, item in enumerate(download_queue, 1)
+    ]
 
-                    file_path = await downloader.download_track(item)
+    await asyncio.gather(*tasks, return_exceptions=True)
 
-                    if not file_path or not Path(file_path).exists():
-                        raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
-
-                    file_size = Path(file_path).stat().st_size
-                    max_size = config.max_file_size_mb * 1024 * 1024
-
-                    if file_size > max_size:
-                        logger.warning(f"Skipping {item.media_tags.title}: file too large")
-                        failed += 1
-                        continue
-
-                    metadata = downloader.extract_metadata(item)
-                    message = await sender.send_audio(context, chat_id, file_path, metadata)
-
-                    await cache.store_song(
-                        metadata,
-                        message.audio.file_id,
-                        message.audio.file_unique_id,
-                        file_size
-                    )
-
-                    processed += 1
-
-                finally:
-                    concurrency.release(user_id)
-                    if file_path and Path(file_path).exists():
-                        Path(file_path).unlink()
-
-        except Exception as e:
-            logger.exception(f"Error processing track {idx}/{total}")
-            failed += 1
+    progress_task.cancel()
+    try:
+        await progress_task
+    except asyncio.CancelledError:
+        pass
 
     await cache.update_user_activity(
         user_id,
@@ -254,7 +298,7 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     try:
         await status_msg.edit_text(
-            f"Completed! Processed: {processed}, Failed: {failed}"
+            f"Completed! Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']}"
         )
     except (TimedOut, NetworkError) as e:
         logger.warning(f"Failed to edit final status message: {e}")
