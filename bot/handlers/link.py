@@ -373,7 +373,8 @@ async def handle_album_media_group(
                 file_id = channel_message.audio.file_id if channel_message and channel_message.audio else cached['file_id']
                 prepared_entries.append({
                     'metadata': metadata,
-                    'file_id': file_id
+                    'file_id': file_id,
+                    'is_cached': True
                 })
                 continue
 
@@ -451,7 +452,7 @@ async def handle_album_media_group(
             await sender.build_input_media_audio(
                 entry['metadata'],
                 entry['file_id'],
-                include_thumbnail=True
+                include_thumbnail=not entry.get('is_cached')
             )
             for entry in prepared_entries
         ]

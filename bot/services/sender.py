@@ -65,7 +65,6 @@ class SenderService:
         metadata: dict
     ) -> Message:
         duration = metadata.get('duration_ms', 0) // 1000
-        thumbnail = await self._get_thumbnail(metadata.get('cover_url'), None, metadata)
 
         try:
             message = await context.bot.send_audio(
@@ -74,30 +73,20 @@ class SenderService:
                 title=metadata.get('title'),
                 performer=metadata.get('artist'),
                 duration=duration,
-                thumbnail=thumbnail
+                thumbnail=None
             )
 
-            cover_status = "with cover" if thumbnail else "without cover"
-            logger.info(f"Successfully sent cached audio '{metadata.get('title')}' by '{metadata.get('artist')}' {cover_status}")
+            logger.info(
+                f"Successfully sent cached audio '{metadata.get('title')}' "
+                f"by '{metadata.get('artist')}' without cover fetch"
+            )
 
             return message
         except Exception as e:
-            logger.error(f"Failed to send cached audio '{metadata.get('title')}' with thumbnail: {type(e).__name__}: {e}")
-
-            if thumbnail:
-                logger.info(f"Retrying without thumbnail for '{metadata.get('title')}'")
-                message = await context.bot.send_audio(
-                    chat_id=chat_id,
-                    audio=file_id,
-                    title=metadata.get('title'),
-                    performer=metadata.get('artist'),
-                    duration=duration,
-                    thumbnail=None
-                )
-                logger.info(f"Successfully sent cached audio '{metadata.get('title')}' without cover")
-                return message
-            else:
-                raise
+            logger.error(
+                f"Failed to send cached audio '{metadata.get('title')}': {type(e).__name__}: {e}"
+            )
+            raise
 
     async def build_input_media_audio(
         self,
