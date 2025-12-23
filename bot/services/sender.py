@@ -1,7 +1,7 @@
 import httpx
 import logging
 import asyncio
-from telegram import Message, InputMediaAudio
+from telegram import Message, InputMediaAudio, InputFile
 from telegram.error import TimedOut, NetworkError
 from telegram.ext import ContextTypes
 from pathlib import Path
@@ -119,6 +119,9 @@ class SenderService:
         thumbnail = None
         if include_thumbnail:
             thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
+            if isinstance(thumbnail, (bytes, bytearray)):
+                thumb_id = metadata.get('apple_music_id') or 'unknown'
+                thumbnail = InputFile(thumbnail, filename=f"thumb_{thumb_id}.jpg")
 
         return InputMediaAudio(
             media=media,

@@ -332,6 +332,7 @@ async def handle_album_media_group(
     await safe_edit_status(status_msg, f"找到 {total} 首歌曲, 将以合辑发送...")
 
     prepared_entries = []
+    individual_entries = []
     failed = 0
     max_size = config.max_file_size_mb * 1024 * 1024
     archive_channel = getattr(config, 'archive_channel', '@applemusicachive')
@@ -350,19 +351,6 @@ async def handle_album_media_group(
                         path_obj.unlink()
             except Exception as e:
                 logger.warning(f"Failed to clean up temp file: {e}")
-
-    def prepare_input_file(entry):
-        file_path = entry.get('file_path')
-        if not file_path:
-            raise FileNotFoundError("No file path available for upload")
-
-        path_obj = Path(file_path)
-        if not path_obj.exists():
-            raise FileNotFoundError(f"File not found at: {file_path}")
-
-        file_handle = open(file_path, 'rb')
-        entry['file_handle'] = file_handle
-        return InputFile(file_handle, filename=path_obj.name, read_file_handle=False)
 
     async def send_entries_individually(entries):
         processed = 0
@@ -455,9 +443,8 @@ async def handle_album_media_group(
                     file_size
                 )
             else:
-                prepared_entries.append({
+                individual_entries.append({
                     'metadata': metadata,
-                    'file_id': file_path,
                     'file_path': file_path,
                     'file_size': file_size,
                     'needs_upload': True
@@ -472,17 +459,19 @@ async def handle_album_media_group(
             if acquired:
                 concurrency.release(user_id)
 
-    if not prepared_entries:
+    if not prepared_entries and not individual_entries:
         cleanup_entries(prepared_entries)
+        cleanup_entries(individual_entries)
         await safe_edit_status(status_msg, f"完成! 已处理: 0个, 失败: {failed}")
         return
 
     if len(prepared_entries) < 2:
         await safe_edit_status(status_msg, "可发送歌曲少于2首，逐条发送...")
-        processed = await send_entries_individually(prepared_entries)
+        processed = await send_entries_individually(prepared_entries + individual_entries)
         cleanup_entries(prepared_entries)
+        cleanup_entries(individual_entries)
 
-        failed_total = failed + (len(prepared_entries) - processed)
+        failed_total = failed + (len(prepared_entries) + len(individual_entries) - processed)
         await cache.update_user_activity(
             user_id,
             update.effective_user.username,
@@ -498,19 +487,15 @@ async def handle_album_media_group(
         await safe_edit_status(status_msg, f"已准备 {len(prepared_entries)} 首歌曲, 正在上传...")
         media_group = []
         for entry in prepared_entries:
-            if entry.get('needs_upload'):
-                media_source = prepare_input_file(entry)
-            else:
-                media_source = entry['file_id']
+            media_source = entry['file_id']
 
             file_path = entry.get('file_path')
-            include_thumbnail = entry.get('needs_upload', False)
 
             media = await sender.build_input_media_audio(
                 entry['metadata'],
                 media_source,
                 file_path=file_path,
-                include_thumbnail=include_thumbnail
+                include_thumbnail=False
             )
             media_group.append(media)
 
@@ -533,12 +518,16 @@ async def handle_album_media_group(
                     entry['file_size']
                 )
 
+        if individual_entries:
+            processed += await send_entries_individually(individual_entries)
+
     except Exception as e:
         logger.exception(f"Failed to send media group, falling back to individual sends: {e}")
-        processed = await send_entries_individually(prepared_entries)
-        send_failures = len(prepared_entries) - processed
+        processed = await send_entries_individually(prepared_entries + individual_entries)
+        send_failures = len(prepared_entries) + len(individual_entries) - processed
     finally:
         cleanup_entries(prepared_entries)
+        cleanup_entries(individual_entries)
 
     failed_total = failed + send_failures
 
