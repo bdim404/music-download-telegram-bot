@@ -74,8 +74,8 @@ async def safe_delete_user_message(user_msg):
 
 
 def format_track_label(item) -> str:
-    title = getattr(getattr(item, "media_tags", None), "title", None) or "未知歌曲"
-    artist = getattr(getattr(item, "media_tags", None), "artist", None) or "未知歌手"
+    title = getattr(getattr(item, "media_tags", None), "title", None) or "Unknown Song"
+    artist = getattr(getattr(item, "media_tags", None), "artist", None) or "Unknown Artist"
     return f"{title} - {artist}"
 
 
@@ -136,8 +136,11 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     message = update.effective_message
     downloader = context.bot_data['downloader']
+    chat_id = update.effective_chat.id
+    message_id = message.message_id
+    reply_to = message_id if is_group_chat(chat_id) else None
 
-    status_msg = await send_message_with_retry(message, "正在验证链接...")
+    status_msg = await send_message_with_retry(message, "Validating link...")
 
     url_info = downloader.parse_url(url)
     if not url_info:
@@ -151,7 +154,7 @@ async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
         ('/album/' in url.lower())
     )
 
-    await safe_edit_status(status_msg, "正在获取歌曲信息...")
+    await safe_edit_status(status_msg, "Fetching song information...")
 
     try:
         download_queue = await downloader.get_download_queue(url_info)
@@ -164,9 +167,9 @@ async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
             return
 
         if len(download_queue) > 1:
-            await handle_collection(update, context, download_queue, status_msg, is_album_request)
+            await handle_collection(update, context, download_queue, status_msg, is_album_request, reply_to)
         else:
-            await handle_single_track(update, context, download_queue[0], status_msg)
+            await handle_single_track(update, context, download_queue[0], status_msg, reply_to)
 
     except Exception as e:
         logger.exception(f"Error processing link: {url}")
@@ -182,11 +185,14 @@ async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
 async def process_multiple_urls(update: Update, context: ContextTypes.DEFAULT_TYPE, urls: list[str]):
     message = update.effective_message
     downloader = context.bot_data['downloader']
+    chat_id = update.effective_chat.id
+    message_id = message.message_id
+    reply_to = message_id if is_group_chat(chat_id) else None
 
     total_urls = len(urls)
     status_msg = await send_message_with_retry(
         message,
-        f"发现 {total_urls} 个链接，开始处理..."
+        f"Found {total_urls} links, processing..."
     )
 
     processed = 0
@@ -194,7 +200,7 @@ async def process_multiple_urls(update: Update, context: ContextTypes.DEFAULT_TY
 
     for idx, url in enumerate(urls, 1):
         try:
-            await safe_edit_status(status_msg, f"处理链接 {idx}/{total_urls}...")
+            await safe_edit_status(status_msg, f"Processing link {idx}/{total_urls}...")
 
             url_info = downloader.parse_url(url)
             if not url_info:
@@ -209,9 +215,9 @@ async def process_multiple_urls(update: Update, context: ContextTypes.DEFAULT_TY
                 continue
 
             if len(download_queue) > 1:
-                await handle_collection(update, context, download_queue, None, False)
+                await handle_collection(update, context, download_queue, None, False, reply_to)
             else:
-                await handle_single_track(update, context, download_queue[0], None)
+                await handle_single_track(update, context, download_queue[0], None, reply_to)
 
             processed += 1
 
@@ -221,12 +227,12 @@ async def process_multiple_urls(update: Update, context: ContextTypes.DEFAULT_TY
 
     await safe_edit_status(
         status_msg,
-        f"完成! 已处理: {processed}个链接, 失败: {failed}个链接"
+        f"Complete! Processed: {processed} links, Failed: {failed} links"
     )
     asyncio.create_task(delete_status_after_delay(status_msg))
 
 
-async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE, item, status_msg=None):
+async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE, item, status_msg=None, message_id: Optional[int] = None):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
     sender = context.bot_data['sender']
@@ -246,13 +252,13 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
     apple_music_id = item.media_metadata['id']
 
     if not status_msg:
-        status_msg = await send_message_with_retry(update.message, "正在获取歌曲信息...")
+        status_msg = await send_message_with_retry(update.message, "Fetching song information...")
 
     cached = await cache.get_cached_song(apple_music_id)
     if cached:
         logger.info(f"Cache hit for {apple_music_id}")
         await safe_delete_status(status_msg)
-        await sender.send_cached_audio(context, chat_id, cached['file_id'], cached)
+        await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
         await cache.update_user_activity(
             user_id,
             update.effective_user.username,
@@ -264,7 +270,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await concurrency.acquire(user_id)
 
-        await safe_edit_status(status_msg, f"正在下载: {format_track_label(item)}")
+        await safe_edit_status(status_msg, f"Downloading: {format_track_label(item)}")
 
         file_path = await downloader.download_track(item)
 
@@ -280,10 +286,10 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"Maximum size is {config.max_file_size_mb}MB."
             )
 
-        await safe_edit_status(status_msg, "正在上传...")
+        await safe_edit_status(status_msg, "Uploading...")
 
         metadata = downloader.extract_metadata(item)
-        message = await sender.send_audio(context, chat_id, file_path, metadata)
+        message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
 
         await cache.store_song(
             metadata,
@@ -328,7 +334,8 @@ async def process_track_item(
     concurrency,
     config,
     context,
-    progress_counter: dict
+    progress_counter: dict,
+    message_id: Optional[int] = None
 ):
     if item.error:
         progress_counter['failed'] += 1
@@ -339,7 +346,7 @@ async def process_track_item(
 
         cached = await cache.get_cached_song(apple_music_id)
         if cached:
-            await sender.send_cached_audio(context, chat_id, cached['file_id'], cached)
+            await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
             progress_counter['processed'] += 1
             return
 
@@ -362,7 +369,7 @@ async def process_track_item(
                 return
 
             metadata = downloader.extract_metadata(item)
-            message = await sender.send_audio(context, chat_id, file_path, metadata)
+            message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
 
             await cache.store_song(
                 metadata,
@@ -388,7 +395,8 @@ async def handle_album_media_group(
     context: ContextTypes.DEFAULT_TYPE,
     download_queue: list,
     status_msg,
-    total: int
+    total: int,
+    message_id: Optional[int] = None
 ):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -399,7 +407,7 @@ async def handle_album_media_group(
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
-    await safe_edit_status(status_msg, f"找到 {total} 首歌曲, 将以合辑发送...")
+    await safe_edit_status(status_msg, f"Found {total} songs, sending as album...")
 
     prepared_entries = []
     individual_entries = []
@@ -433,7 +441,8 @@ async def handle_album_media_group(
                         context,
                         chat_id,
                         upload_source,
-                        metadata
+                        metadata,
+                        message_id
                     )
                     if message and message.audio:
                         await cache.store_song(
@@ -443,7 +452,7 @@ async def handle_album_media_group(
                             entry.get('file_size', 0)
                         )
                 else:
-                    await sender.send_cached_audio(context, chat_id, entry['file_id'], metadata)
+                    await sender.send_cached_audio(context, chat_id, entry['file_id'], metadata, message_id)
                 processed += 1
             except Exception as e:
                 logger.exception(f"Failed to send track individually: {e}")
@@ -458,7 +467,7 @@ async def handle_album_media_group(
         apple_music_id = metadata['apple_music_id']
         await safe_edit_status(
             status_msg,
-            f"正在准备合辑: {idx}/{total}\n正在处理: {metadata['title']} - {metadata['artist']}"
+            f"Preparing album: {idx}/{total}\nProcessing: {metadata['title']} - {metadata['artist']}"
         )
 
         cached = await cache.get_cached_song(apple_music_id)
@@ -536,11 +545,11 @@ async def handle_album_media_group(
     if not prepared_entries and not individual_entries:
         cleanup_entries(prepared_entries)
         cleanup_entries(individual_entries)
-        await safe_edit_status(status_msg, f"完成! 已处理: 0个, 失败: {failed}")
+        await safe_edit_status(status_msg, f"Complete! Processed: 0, Failed: {failed}")
         return
 
     if len(prepared_entries) < 2:
-        await safe_edit_status(status_msg, "可发送歌曲少于2首，逐条发送...")
+        await safe_edit_status(status_msg, "Less than 2 songs available, sending individually...")
         processed = await send_entries_individually(prepared_entries + individual_entries)
         cleanup_entries(prepared_entries)
         cleanup_entries(individual_entries)
@@ -551,14 +560,14 @@ async def handle_album_media_group(
             update.effective_user.username,
             update.effective_user.first_name
         )
-        await safe_edit_status(status_msg, f"完成! 已处理: {processed}个, 失败: {failed_total}")
+        await safe_edit_status(status_msg, f"Complete! Processed: {processed}, Failed: {failed_total}")
         asyncio.create_task(delete_status_after_delay(status_msg))
         return
 
     processed = 0
     send_failures = 0
     try:
-        await safe_edit_status(status_msg, f"已准备 {len(prepared_entries)} 首歌曲, 正在上传...")
+        await safe_edit_status(status_msg, f"Prepared {len(prepared_entries)} songs, uploading...")
         media_group = []
         for entry in prepared_entries:
             media_source = entry['file_id']
@@ -575,7 +584,8 @@ async def handle_album_media_group(
 
         responses = await context.bot.send_media_group(
             chat_id=chat_id,
-            media=media_group
+            media=media_group,
+            reply_to_message_id=message_id
         )
 
         processed = len(responses)
@@ -613,12 +623,12 @@ async def handle_album_media_group(
 
     await safe_edit_status(
         status_msg,
-        f"完成! 已处理: {processed}个, 失败: {failed_total}"
+        f"Complete! Processed: {processed}, Failed: {failed_total}"
     )
     asyncio.create_task(delete_status_after_delay(status_msg))
 
 
-async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list, status_msg=None, is_album: bool = False):
+async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, download_queue: list, status_msg=None, is_album: bool = False, message_id: Optional[int] = None):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
     sender = context.bot_data['sender']
@@ -630,12 +640,12 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     total = len(download_queue)
     if is_album and 1 < total <= 10:
-        await handle_album_media_group(update, context, download_queue, status_msg, total)
+        await handle_album_media_group(update, context, download_queue, status_msg, total, message_id)
         return
     if not status_msg:
         status_msg = await send_message_with_retry(
             update.message,
-            "正在获取歌曲信息..."
+            "Fetching song information..."
         )
 
     progress_counter = {'processed': 0, 'failed': 0, 'current': None}
@@ -647,10 +657,10 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 completed = progress_counter['processed'] + progress_counter['failed']
                 if completed < total:
                     current = progress_counter.get('current')
-                    current_text = f"\n当前: {current}" if current else ""
+                    current_text = f"\nCurrent: {current}" if current else ""
                     new_text = (
-                        f"下载中: {completed}/{total} "
-                        f"(成功 {progress_counter['processed']}, 失败 {progress_counter['failed']})"
+                        f"Downloading: {completed}/{total} "
+                        f"(Successful: {progress_counter['processed']}, Failed: {progress_counter['failed']})"
                         f"{current_text}"
                     )
                     if new_text != last_text:
@@ -669,7 +679,7 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 logger.warning(f"Error in progress update: {e}")
                 break
 
-    await safe_edit_status(status_msg, f"找到 {total} 首歌曲,正在下载...")
+    await safe_edit_status(status_msg, f"Found {total} songs, downloading...")
 
     progress_task = asyncio.create_task(update_progress())
 
@@ -677,7 +687,8 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         process_track_item(
             item, idx, total, user_id, chat_id,
             downloader, cache, sender, concurrency, config, context,
-            progress_counter
+            progress_counter,
+            message_id
         )
         for idx, item in enumerate(download_queue, 1)
     ]
@@ -698,6 +709,6 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     await safe_edit_status(
         status_msg,
-        f"完成! 已处理: {progress_counter['processed']}个, 失败: {progress_counter['failed']}个"
+        f"Complete! Processed: {progress_counter['processed']}, Failed: {progress_counter['failed']}"
     )
     asyncio.create_task(delete_status_after_delay(status_msg))

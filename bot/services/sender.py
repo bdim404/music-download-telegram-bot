@@ -23,6 +23,7 @@ class SenderService:
         metadata: dict,
         duration: int,
         thumbnail: Optional[bytes],
+        reply_to_message_id: Optional[int] = None,
         max_retries: int = 3
     ) -> Message:
         for attempt in range(max_retries):
@@ -34,7 +35,8 @@ class SenderService:
                         title=metadata['title'],
                         performer=metadata['artist'],
                         duration=duration,
-                        thumbnail=thumbnail
+                        thumbnail=thumbnail,
+                        reply_to_message_id=reply_to_message_id
                     )
             except (TimedOut, NetworkError) as e:
                 if attempt == max_retries - 1:
@@ -58,7 +60,8 @@ class SenderService:
         context: ContextTypes.DEFAULT_TYPE,
         chat_id: int,
         file_path: str,
-        metadata: dict
+        metadata: dict,
+        reply_to_message_id: Optional[int] = None
     ) -> Message:
         duration = metadata.get('duration_ms', 0) // 1000
         thumbnail = await self._get_thumbnail(metadata.get('cover_url'), file_path, metadata)
@@ -69,7 +72,8 @@ class SenderService:
             file_path=file_path,
             metadata=metadata,
             duration=duration,
-            thumbnail=thumbnail
+            thumbnail=thumbnail,
+            reply_to_message_id=reply_to_message_id
         )
 
         cover_status = "with cover" if thumbnail else "without cover"
@@ -82,7 +86,8 @@ class SenderService:
         context: ContextTypes.DEFAULT_TYPE,
         chat_id: int,
         file_id: str,
-        metadata: dict
+        metadata: dict,
+        reply_to_message_id: Optional[int] = None
     ) -> Message:
         duration = metadata.get('duration_ms', 0) // 1000
 
@@ -93,7 +98,8 @@ class SenderService:
                 title=metadata.get('title'),
                 performer=metadata.get('artist'),
                 duration=duration,
-                thumbnail=None
+                thumbnail=None,
+                reply_to_message_id=reply_to_message_id
             )
 
             logger.info(
