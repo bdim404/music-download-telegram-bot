@@ -168,6 +168,7 @@ async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
             return
 
         if len(download_queue) > 1:
+            await safe_edit_status(status_msg, f"Found {len(download_queue)} songs")
             await handle_collection(update, context, download_queue, status_msg, is_album_request, reply_to)
         else:
             await handle_single_track(update, context, download_queue[0], status_msg, reply_to)
@@ -646,7 +647,7 @@ async def handle_collection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if not status_msg:
         status_msg = await send_message_with_retry(
             update.message,
-            "Fetching song information..."
+            f"Found {total} songs"
         )
 
     progress_counter = {'processed': 0, 'failed': 0, 'current': None}
