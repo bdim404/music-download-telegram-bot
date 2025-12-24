@@ -4,6 +4,7 @@ from telegram.error import TimedOut, NetworkError
 from pathlib import Path
 import logging
 import asyncio
+import re
 from gamdl.downloader.constants import ALBUM_MEDIA_TYPE
 
 
@@ -78,6 +79,12 @@ def format_track_label(item) -> str:
     return f"{title} - {artist}"
 
 
+def extract_apple_music_urls(text: str) -> list[str]:
+    url_pattern = r'https?://(?:music\.apple\.com|apple\.co)/[^\s]+'
+    urls = re.findall(url_pattern, text, re.IGNORECASE)
+    return [url for url in urls if has_apple_music_domain(url)]
+
+
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text:
@@ -90,8 +97,8 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = user.id
-    url = message.text.strip()
     chat_id = update.effective_chat.id
+    message_text = message.text.strip()
 
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -107,7 +114,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Group {chat_id} not in whitelist, ignoring")
             return
         logger.info(f"Group {chat_id} is whitelisted, checking for Apple Music domain")
-        if not has_apple_music_domain(url):
+        if not has_apple_music_domain(message_text):
             logger.info(f"Ignoring non-Apple Music message in group {chat_id}")
             return
         logger.info(f"Processing Apple Music link in group {chat_id}")
@@ -115,17 +122,27 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await whitelist(update, context):
             return
 
-    status_msg = None
-    if has_apple_music_domain(url):
-        status_msg = await send_message_with_retry(message, "正在验证链接...")
+    urls = extract_apple_music_urls(message_text)
+    if not urls:
+        logger.info(f"No valid Apple Music URLs found in message: {message_text[:50]}...")
+        return
+
+    if len(urls) == 1:
+        await process_single_url(update, context, urls[0])
+    else:
+        await process_multiple_urls(update, context, urls)
+
+
+async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    message = update.effective_message
+    downloader = context.bot_data['downloader']
+
+    status_msg = await send_message_with_retry(message, "正在验证链接...")
 
     url_info = downloader.parse_url(url)
     if not url_info:
         error_text = "Invalid Apple Music URL. Please send a valid song, album, or playlist link."
-        if status_msg:
-            await safe_edit_status(status_msg, error_text)
-        else:
-            await send_message_with_retry(message, error_text)
+        await safe_edit_status(status_msg, error_text)
         return
 
     is_album_request = (
@@ -134,8 +151,7 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ('/album/' in url.lower())
     )
 
-    if status_msg:
-        await safe_edit_status(status_msg, "正在获取歌曲信息...")
+    await safe_edit_status(status_msg, "正在获取歌曲信息...")
 
     try:
         download_queue = await downloader.get_download_queue(url_info)
@@ -161,6 +177,53 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             logger.error("Failed to send error message to user")
+
+
+async def process_multiple_urls(update: Update, context: ContextTypes.DEFAULT_TYPE, urls: list[str]):
+    message = update.effective_message
+    downloader = context.bot_data['downloader']
+
+    total_urls = len(urls)
+    status_msg = await send_message_with_retry(
+        message,
+        f"发现 {total_urls} 个链接，开始处理..."
+    )
+
+    processed = 0
+    failed = 0
+
+    for idx, url in enumerate(urls, 1):
+        try:
+            await safe_edit_status(status_msg, f"处理链接 {idx}/{total_urls}...")
+
+            url_info = downloader.parse_url(url)
+            if not url_info:
+                logger.warning(f"Invalid URL {idx}/{total_urls}: {url}")
+                failed += 1
+                continue
+
+            download_queue = await downloader.get_download_queue(url_info)
+            if not download_queue:
+                logger.warning(f"No songs found for URL {idx}/{total_urls}: {url}")
+                failed += 1
+                continue
+
+            if len(download_queue) > 1:
+                await handle_collection(update, context, download_queue, None, False)
+            else:
+                await handle_single_track(update, context, download_queue[0], None)
+
+            processed += 1
+
+        except Exception as e:
+            logger.exception(f"Error processing URL {idx}/{total_urls}: {url}")
+            failed += 1
+
+    await safe_edit_status(
+        status_msg,
+        f"完成! 已处理: {processed}个链接, 失败: {failed}个链接"
+    )
+    asyncio.create_task(delete_status_after_delay(status_msg))
 
 
 async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE, item, status_msg=None):
