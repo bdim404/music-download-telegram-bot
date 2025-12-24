@@ -2,6 +2,7 @@ from telegram import Update, InputFile
 from telegram.ext import ContextTypes
 from telegram.error import TimedOut, NetworkError
 from pathlib import Path
+from typing import Optional
 import logging
 import asyncio
 import re
