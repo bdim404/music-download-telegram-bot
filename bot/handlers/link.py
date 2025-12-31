@@ -13,7 +13,7 @@ from gamdl.downloader.constants import ALBUM_MEDIA_TYPE
 logger = logging.getLogger(__name__)
 
 
-async def send_message_with_retry(message, text, max_retries=3):
+async def send_message_with_retry(message, text, max_retries=5):
     for attempt in range(max_retries):
         try:
             return await message.reply_text(text)
@@ -268,6 +268,21 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
+    if not await sender.acquire_upload_lock(str(apple_music_id)):
+        logger.info(f"Upload already in progress for {apple_music_id}, waiting...")
+        await sender.wait_for_upload(str(apple_music_id))
+        cached = await cache.get_cached_song(apple_music_id)
+        if cached:
+            logger.info(f"Cache hit after waiting for {apple_music_id}")
+            await safe_delete_status(status_msg)
+            await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
+            await cache.update_user_activity(
+                user_id,
+                update.effective_user.username,
+                update.effective_user.first_name
+            )
+            return
+
     file_path = None
     try:
         await concurrency.acquire(user_id)
@@ -293,12 +308,15 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
         metadata = downloader.extract_metadata(item)
         message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
 
-        await cache.store_song(
-            metadata,
-            message.audio.file_id,
-            message.audio.file_unique_id,
-            file_size
-        )
+        try:
+            await cache.store_song(
+                metadata,
+                message.audio.file_id,
+                message.audio.file_unique_id,
+                file_size
+            )
+        except Exception as e:
+            logger.error(f"Failed to cache song {apple_music_id}: {e}")
 
         await cache.update_user_activity(
             user_id,
@@ -319,6 +337,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception:
             logger.error("Failed to send error message to user")
     finally:
+        await sender.release_upload_lock(str(apple_music_id))
         concurrency.release(user_id)
         if file_path and Path(file_path).exists():
             Path(file_path).unlink()
@@ -352,6 +371,14 @@ async def process_track_item(
             progress_counter['processed'] += 1
             return
 
+        if not await sender.acquire_upload_lock(str(apple_music_id)):
+            await sender.wait_for_upload(str(apple_music_id))
+            cached = await cache.get_cached_song(apple_music_id)
+            if cached:
+                await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
+                progress_counter['processed'] += 1
+                return
+
         file_path = None
         try:
             await concurrency.acquire(user_id)
@@ -373,16 +400,20 @@ async def process_track_item(
             metadata = downloader.extract_metadata(item)
             message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
 
-            await cache.store_song(
-                metadata,
-                message.audio.file_id,
-                message.audio.file_unique_id,
-                file_size
-            )
+            try:
+                await cache.store_song(
+                    metadata,
+                    message.audio.file_id,
+                    message.audio.file_unique_id,
+                    file_size
+                )
+            except Exception as e:
+                logger.error(f"Failed to cache song {apple_music_id}: {e}")
 
             progress_counter['processed'] += 1
 
         finally:
+            await sender.release_upload_lock(str(apple_music_id))
             concurrency.release(user_id)
             if file_path and Path(file_path).exists():
                 Path(file_path).unlink()
@@ -390,6 +421,7 @@ async def process_track_item(
     except Exception as e:
         logger.exception(f"Error processing track {idx}/{total}")
         progress_counter['failed'] += 1
+        await sender.release_upload_lock(str(apple_music_id))
 
 
 async def handle_album_media_group(

@@ -70,9 +70,9 @@ async def main():
     request = HTTPXRequest(
         connection_pool_size=8,
         connect_timeout=30.0,
-        read_timeout=30.0,
-        write_timeout=30.0,
-        pool_timeout=30.0,
+        read_timeout=90.0,
+        write_timeout=300.0,
+        pool_timeout=60.0,
     )
     application = (
         Application.builder()

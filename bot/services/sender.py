@@ -1,11 +1,12 @@
 import httpx
 import logging
 import asyncio
+import random
 from telegram import Message, InputMediaAudio, InputFile
 from telegram.error import TimedOut, NetworkError
 from telegram.ext import ContextTypes
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 from mutagen.mp4 import MP4
 from difflib import SequenceMatcher
 from urllib.parse import quote_plus
@@ -15,6 +16,31 @@ logger = logging.getLogger(__name__)
 
 
 class SenderService:
+    def __init__(self):
+        self.upload_tracker: dict[str, asyncio.Event] = {}
+        self.upload_lock = asyncio.Lock()
+
+    async def acquire_upload_lock(self, track_id: str) -> bool:
+        async with self.upload_lock:
+            if track_id in self.upload_tracker:
+                return False
+            self.upload_tracker[track_id] = asyncio.Event()
+            return True
+
+    async def release_upload_lock(self, track_id: str):
+        async with self.upload_lock:
+            if track_id in self.upload_tracker:
+                self.upload_tracker[track_id].set()
+                del self.upload_tracker[track_id]
+
+    async def wait_for_upload(self, track_id: str) -> bool:
+        async with self.upload_lock:
+            event = self.upload_tracker.get(track_id)
+        if event:
+            await event.wait()
+            return True
+        return False
+
     async def _send_audio_with_retry(
         self,
         context: ContextTypes.DEFAULT_TYPE,
@@ -24,7 +50,8 @@ class SenderService:
         duration: int,
         thumbnail: Optional[bytes],
         reply_to_message_id: Optional[int] = None,
-        max_retries: int = 3
+        max_retries: int = 7,
+        retry_callback: Optional[Callable[[int, int], None]] = None
     ) -> Message:
         for attempt in range(max_retries):
             try:
@@ -48,7 +75,10 @@ class SenderService:
                 logger.warning(
                     f"Retry {attempt + 1}/{max_retries} sending audio '{metadata['title']}': {e}"
                 )
-                await asyncio.sleep(2 ** attempt)
+                if retry_callback:
+                    await retry_callback(attempt + 1, max_retries)
+                backoff_delay = (2 ** attempt) * 2 + random.uniform(0, 1)
+                await asyncio.sleep(backoff_delay)
             except Exception as e:
                 logger.error(
                     f"Failed to send audio '{metadata['title']}': {type(e).__name__}: {e}"
@@ -87,32 +117,46 @@ class SenderService:
         chat_id: int,
         file_id: str,
         metadata: dict,
-        reply_to_message_id: Optional[int] = None
+        reply_to_message_id: Optional[int] = None,
+        max_retries: int = 7
     ) -> Message:
         duration = metadata.get('duration_ms', 0) // 1000
 
-        try:
-            message = await context.bot.send_audio(
-                chat_id=chat_id,
-                audio=file_id,
-                title=metadata.get('title'),
-                performer=metadata.get('artist'),
-                duration=duration,
-                thumbnail=None,
-                reply_to_message_id=reply_to_message_id
-            )
+        for attempt in range(max_retries):
+            try:
+                message = await context.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=file_id,
+                    title=metadata.get('title'),
+                    performer=metadata.get('artist'),
+                    duration=duration,
+                    thumbnail=None,
+                    reply_to_message_id=reply_to_message_id
+                )
 
-            logger.info(
-                f"Successfully sent cached audio '{metadata.get('title')}' "
-                f"by '{metadata.get('artist')}' without cover fetch"
-            )
+                logger.info(
+                    f"Successfully sent cached audio '{metadata.get('title')}' "
+                    f"by '{metadata.get('artist')}' without cover fetch"
+                )
 
-            return message
-        except Exception as e:
-            logger.error(
-                f"Failed to send cached audio '{metadata.get('title')}': {type(e).__name__}: {e}"
-            )
-            raise
+                return message
+            except (TimedOut, NetworkError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(
+                        f"Failed to send cached audio '{metadata.get('title')}' "
+                        f"after {max_retries} attempts: {type(e).__name__}: {e}"
+                    )
+                    raise
+                logger.warning(
+                    f"Retry {attempt + 1}/{max_retries} sending cached audio '{metadata.get('title')}': {e}"
+                )
+                backoff_delay = (2 ** attempt) * 2 + random.uniform(0, 1)
+                await asyncio.sleep(backoff_delay)
+            except Exception as e:
+                logger.error(
+                    f"Failed to send cached audio '{metadata.get('title')}': {type(e).__name__}: {e}"
+                )
+                raise
 
     async def build_input_media_audio(
         self,
