@@ -136,10 +136,6 @@ A: Install Bento4 toolkit (see Installation section)
 **Q: What if cookies expire?**
 A: Re-export cookies.txt from your browser and restart the bot
 
-## Tech Stack
+## Try
 
-- python-telegram-bot - Telegram Bot API
-- aiosqlite - Async SQLite database
-- gamdl - Apple Music download core library
-- httpx - HTTP client
-- mutagen - Audio metadata processing
+You can PM me and then use my bot by [bdim_music_bot](https://t.me/bdim_music_bot)
