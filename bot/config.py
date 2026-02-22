@@ -18,6 +18,10 @@ class Config:
     database_path: str = "./data/cache.db"
     temp_path: str = "./data/temp"
 
+    song_codec: str = "aac-legacy"
+    use_wrapper: bool = False
+    wrapper_url: str = "127.0.0.1:10020"
+
     @classmethod
     def load(cls, path: str = "config.yaml"):
         config_path = Path(path)

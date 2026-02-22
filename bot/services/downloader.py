@@ -1,5 +1,6 @@
 import sys
 import logging
+import socket
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "gamdl"))
@@ -28,6 +29,22 @@ class DownloaderService:
         self.config = config
         self.apple_music_api = None
         self.downloader = None
+        self.fallback_downloader = None
+        self.interface = None
+        self.base_downloader = None
+
+    def _check_wrapper_available(self, timeout: int = 2) -> bool:
+        try:
+            host, port_str = self.config.wrapper_url.rsplit(':', 1)
+            port = int(port_str)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            result = sock.connect_ex((host, port))
+            sock.close()
+            return result == 0
+        except Exception as e:
+            logger.debug(f"Wrapper check failed: {e}")
+            return False
 
     async def initialize(self):
         try:
@@ -51,7 +68,7 @@ class DownloaderService:
                 )
             raise
 
-        interface = AppleMusicInterface(
+        self.interface = AppleMusicInterface(
             self.apple_music_api,
             ItunesApi(
                 self.apple_music_api.storefront,
@@ -59,10 +76,22 @@ class DownloaderService:
             )
         )
 
-        base_downloader = AppleMusicBaseDownloader(
+        if self.config.use_wrapper:
+            if not self._check_wrapper_available():
+                raise RuntimeError(
+                    f"Wrapper service is not available at {self.config.wrapper_url}.\n"
+                    "Please start the wrapper service:\n"
+                    "  docker run -d -p 10020:10020 -p 20020:20020 -p 30020:30020 \\\n"
+                    "    -v ./rootfs/data:/app/rootfs/data -e args='-H 0.0.0.0' wrapper"
+                )
+            logger.info(f"Wrapper service is available at {self.config.wrapper_url}")
+
+        self.base_downloader = AppleMusicBaseDownloader(
             output_path=self.config.temp_path,
             temp_path=self.config.temp_path,
-            use_wrapper=False,
+            use_wrapper=self.config.use_wrapper,
+            wrapper_decrypt_ip=self.config.wrapper_url,
+            amdecrypt_path='amdecrypt',
             wvd_path=None,
             save_cover=False,
             save_playlist=False,
@@ -70,36 +99,52 @@ class DownloaderService:
             overwrite=True
         )
 
-        song_interface = AppleMusicSongInterface(interface)
+        codec_map = {
+            "aac-legacy": SongCodec.AAC_LEGACY,
+            "aac-he-legacy": SongCodec.AAC_HE_LEGACY,
+            "aac": SongCodec.AAC,
+            "aac-he": SongCodec.AAC_HE,
+            "aac-binaural": SongCodec.AAC_BINAURAL,
+            "aac-he-binaural": SongCodec.AAC_HE_BINAURAL,
+            "aac-downmix": SongCodec.AAC_DOWNMIX,
+            "aac-he-downmix": SongCodec.AAC_HE_DOWNMIX,
+            "atmos": SongCodec.ATMOS,
+            "ac3": SongCodec.AC3,
+            "alac": SongCodec.ALAC
+        }
+
+        selected_codec = codec_map.get(self.config.song_codec.lower(), SongCodec.AAC_LEGACY)
+
+        song_interface = AppleMusicSongInterface(self.interface)
         song_downloader = AppleMusicSongDownloader(
-            base_downloader=base_downloader,
+            base_downloader=self.base_downloader,
             interface=song_interface,
-            codec=SongCodec.AAC_LEGACY,
+            codec=selected_codec,
             no_synced_lyrics=True
         )
 
-        music_video_interface = AppleMusicMusicVideoInterface(interface)
+        music_video_interface = AppleMusicMusicVideoInterface(self.interface)
         music_video_downloader = AppleMusicMusicVideoDownloader(
-            base_downloader=base_downloader,
+            base_downloader=self.base_downloader,
             interface=music_video_interface
         )
 
-        uploaded_video_interface = AppleMusicUploadedVideoInterface(interface)
+        uploaded_video_interface = AppleMusicUploadedVideoInterface(self.interface)
         uploaded_video_downloader = AppleMusicUploadedVideoDownloader(
-            base_downloader=base_downloader,
+            base_downloader=self.base_downloader,
             interface=uploaded_video_interface
         )
 
         self.downloader = AppleMusicDownloader(
-            interface=interface,
-            base_downloader=base_downloader,
+            interface=self.interface,
+            base_downloader=self.base_downloader,
             song_downloader=song_downloader,
             music_video_downloader=music_video_downloader,
             uploaded_video_downloader=uploaded_video_downloader,
             skip_processing=False
         )
 
-        if not base_downloader.full_mp4decrypt_path:
+        if not self.base_downloader.full_mp4decrypt_path:
             raise RuntimeError(
                 "mp4decrypt not found. Please install Bento4:\n"
                 "  macOS: brew install bento4\n"
@@ -112,8 +157,65 @@ class DownloaderService:
     async def get_download_queue(self, url_info: UrlInfo) -> list[DownloadItem]:
         return await self.downloader.get_download_queue(url_info)
 
-    async def download_track(self, download_item: DownloadItem) -> str:
-        await self.downloader.download(download_item)
+    async def download_track(self, download_item: DownloadItem) -> tuple[str, str | None]:
+        fallback_message = None
+        high_quality_codecs = ['atmos', 'alac']
+
+        track_title = download_item.media_tags.title
+        track_artist = download_item.media_tags.artist
+        track_id = download_item.media_metadata['id']
+
+        logger.info(f"[{track_id}] Starting download: {track_artist} - {track_title} (codec: {self.config.song_codec.upper()})")
+
+        try:
+            await self.downloader.download(download_item)
+            logger.info(f"[{track_id}] Download completed: {track_artist} - {track_title}")
+        except Exception as e:
+            error_msg = str(e).lower()
+            is_format_unavailable = (
+                'not available' in error_msg or
+                'not found' in error_msg or
+                'unsupported' in error_msg
+            )
+
+            if self.config.song_codec.lower() in high_quality_codecs and is_format_unavailable:
+                logger.warning(f"[{track_id}] {self.config.song_codec.upper()} not available, falling back to AAC")
+                fallback_message = f"⚠️ {self.config.song_codec.upper()} not available, using AAC instead"
+
+                if not self.fallback_downloader:
+                    song_interface = AppleMusicSongInterface(self.interface)
+                    song_downloader = AppleMusicSongDownloader(
+                        base_downloader=self.base_downloader,
+                        interface=song_interface,
+                        codec=SongCodec.AAC,
+                        no_synced_lyrics=True
+                    )
+
+                    music_video_interface = AppleMusicMusicVideoInterface(self.interface)
+                    music_video_downloader = AppleMusicMusicVideoDownloader(
+                        base_downloader=self.base_downloader,
+                        interface=music_video_interface
+                    )
+
+                    uploaded_video_interface = AppleMusicUploadedVideoInterface(self.interface)
+                    uploaded_video_downloader = AppleMusicUploadedVideoDownloader(
+                        base_downloader=self.base_downloader,
+                        interface=uploaded_video_interface
+                    )
+
+                    self.fallback_downloader = AppleMusicDownloader(
+                        interface=self.interface,
+                        base_downloader=self.base_downloader,
+                        song_downloader=song_downloader,
+                        music_video_downloader=music_video_downloader,
+                        uploaded_video_downloader=uploaded_video_downloader,
+                        skip_processing=False
+                    )
+
+                await self.fallback_downloader.download(download_item)
+                logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
+            else:
+                raise
 
         final_path = Path(download_item.final_path)
         if not final_path.is_absolute():
@@ -122,7 +224,10 @@ class DownloaderService:
         if not final_path.exists():
             raise FileNotFoundError(f"Downloaded file not found at: {final_path}")
 
-        return str(final_path)
+        file_size_mb = final_path.stat().st_size / 1024 / 1024
+        logger.info(f"[{track_id}] File ready: {final_path.name} ({file_size_mb:.2f} MB)")
+
+        return str(final_path), fallback_message
 
     def extract_metadata(self, download_item: DownloadItem) -> dict:
         cover_url = None

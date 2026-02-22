@@ -289,7 +289,7 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         await safe_edit_status(status_msg, f"Downloading: {format_track_label(item)}")
 
-        file_path = await downloader.download_track(item)
+        file_path, fallback_message = await downloader.download_track(item)
 
         if not file_path or not Path(file_path).exists():
             raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
@@ -307,6 +307,9 @@ async def handle_single_track(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         metadata = downloader.extract_metadata(item)
         message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
+
+        if fallback_message:
+            await send_message_with_retry(update.message, fallback_message)
 
         try:
             await cache.store_song(
@@ -384,7 +387,7 @@ async def process_track_item(
             await concurrency.acquire(user_id)
 
             progress_counter['current'] = format_track_label(item)
-            file_path = await downloader.download_track(item)
+            file_path, fallback_message = await downloader.download_track(item)
 
             if not file_path or not Path(file_path).exists():
                 raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
@@ -399,6 +402,9 @@ async def process_track_item(
 
             metadata = downloader.extract_metadata(item)
             message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
+
+            if fallback_message:
+                await send_message_with_retry(update.message, fallback_message)
 
             try:
                 await cache.store_song(
@@ -520,7 +526,7 @@ async def handle_album_media_group(
             await concurrency.acquire(user_id)
             acquired = True
 
-            file_path = await downloader.download_track(item)
+            file_path, fallback_message = await downloader.download_track(item)
             path_obj = Path(file_path)
 
             if not path_obj.exists():
@@ -550,7 +556,8 @@ async def handle_album_media_group(
                     'metadata': metadata,
                     'file_id': channel_message.audio.file_id,
                     'file_path': file_path,
-                    'file_size': file_size
+                    'file_size': file_size,
+                    'fallback_message': fallback_message
                 })
 
                 await cache.store_song(
@@ -564,7 +571,8 @@ async def handle_album_media_group(
                     'metadata': metadata,
                     'file_path': file_path,
                     'file_size': file_size,
-                    'needs_upload': True
+                    'needs_upload': True,
+                    'fallback_message': fallback_message
                 })
 
         except Exception as e:

@@ -53,6 +53,11 @@ async def main():
     logger.info(f"Downloader service initialized with cookies from {config.cookies_path}")
     logger.info(f"Subscription active: {downloader.apple_music_api.active_subscription}")
     logger.info(f"Storefront: {downloader.apple_music_api.storefront}")
+    logger.info(f"Audio codec: {config.song_codec.upper()}")
+    if config.use_wrapper:
+        logger.info(f"Wrapper mode: ENABLED (supports ALAC/Dolby Atmos)")
+    else:
+        logger.info(f"Wrapper mode: DISABLED (AAC only)")
 
     cache = CacheService(db)
     sender = SenderService()
@@ -69,10 +74,10 @@ async def main():
 
     request = HTTPXRequest(
         connection_pool_size=8,
-        connect_timeout=30.0,
-        read_timeout=90.0,
-        write_timeout=300.0,
-        pool_timeout=60.0,
+        connect_timeout=60.0,
+        read_timeout=300.0,
+        write_timeout=600.0,
+        pool_timeout=120.0,
     )
     application = (
         Application.builder()

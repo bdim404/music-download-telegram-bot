@@ -77,7 +77,7 @@ class SenderService:
                 )
                 if retry_callback:
                     await retry_callback(attempt + 1, max_retries)
-                backoff_delay = (2 ** attempt) * 2 + random.uniform(0, 1)
+                backoff_delay = (2 ** attempt) * 3 + random.uniform(0, 2)
                 await asyncio.sleep(backoff_delay)
             except Exception as e:
                 logger.error(
@@ -150,7 +150,7 @@ class SenderService:
                 logger.warning(
                     f"Retry {attempt + 1}/{max_retries} sending cached audio '{metadata.get('title')}': {e}"
                 )
-                backoff_delay = (2 ** attempt) * 2 + random.uniform(0, 1)
+                backoff_delay = (2 ** attempt) * 3 + random.uniform(0, 2)
                 await asyncio.sleep(backoff_delay)
             except Exception as e:
                 logger.error(
