@@ -63,7 +63,10 @@ class SenderService:
                         performer=metadata['artist'],
                         duration=duration,
                         thumbnail=thumbnail,
-                        reply_to_message_id=reply_to_message_id
+                        reply_to_message_id=reply_to_message_id,
+                        write_timeout=600.0,
+                        read_timeout=300.0,
+                        connect_timeout=60.0
                     )
             except (TimedOut, NetworkError) as e:
                 if attempt == max_retries - 1:
@@ -131,7 +134,10 @@ class SenderService:
                     performer=metadata.get('artist'),
                     duration=duration,
                     thumbnail=None,
-                    reply_to_message_id=reply_to_message_id
+                    reply_to_message_id=reply_to_message_id,
+                    write_timeout=600.0,
+                    read_timeout=300.0,
+                    connect_timeout=60.0
                 )
 
                 logger.info(
