@@ -403,9 +403,6 @@ async def process_track_item(
             metadata = downloader.extract_metadata(item)
             message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
 
-            if fallback_message:
-                await send_message_with_retry(update.message, fallback_message)
-
             try:
                 await cache.store_song(
                     metadata,

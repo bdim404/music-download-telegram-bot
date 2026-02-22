@@ -162,6 +162,116 @@ class DownloaderService:
                 "  Ubuntu: sudo apt-get install bento4"
             )
 
+    def _create_fallback_downloader(self, codec: SongCodec) -> AppleMusicDownloader:
+        song_interface = AppleMusicSongInterface(self.interface)
+        song_downloader = AppleMusicSongDownloader(
+            base_downloader=self.base_downloader,
+            interface=song_interface,
+            codec=codec,
+            no_synced_lyrics=True
+        )
+
+        music_video_interface = AppleMusicMusicVideoInterface(self.interface)
+        music_video_downloader = AppleMusicMusicVideoDownloader(
+            base_downloader=self.base_downloader,
+            interface=music_video_interface
+        )
+
+        uploaded_video_interface = AppleMusicUploadedVideoInterface(self.interface)
+        uploaded_video_downloader = AppleMusicUploadedVideoDownloader(
+            base_downloader=self.base_downloader,
+            interface=uploaded_video_interface
+        )
+
+        return AppleMusicDownloader(
+            interface=self.interface,
+            base_downloader=self.base_downloader,
+            song_downloader=song_downloader,
+            music_video_downloader=music_video_downloader,
+            uploaded_video_downloader=uploaded_video_downloader,
+            skip_processing=False
+        )
+
+    async def _try_aac_fallback_chain(
+        self,
+        download_item: DownloadItem,
+        url_info: UrlInfo,
+        primary_codec: str,
+        track_id: str,
+        track_artist: str,
+        track_title: str
+    ) -> tuple[DownloadItem, str]:
+        AAC_FALLBACK_CHAIN = {
+            'aac': ['aac-legacy', 'aac-he-legacy'],
+            'aac-he': ['aac', 'aac-legacy'],
+            'aac-binaural': ['aac', 'aac-legacy'],
+            'aac-he-binaural': ['aac-he', 'aac', 'aac-legacy'],
+            'aac-downmix': ['aac', 'aac-legacy'],
+            'aac-he-downmix': ['aac-he', 'aac-legacy'],
+            'aac-legacy': ['aac'],
+            'aac-he-legacy': ['aac-legacy']
+        }
+
+        fallback_chain = AAC_FALLBACK_CHAIN.get(primary_codec, [])
+        if not fallback_chain:
+            raise Exception(
+                f"Track '{track_artist} - {track_title}' is not available in {primary_codec.upper()} format."
+            )
+
+        attempted_codecs = [primary_codec]
+
+        for fallback_codec_str in fallback_chain:
+            attempted_codecs.append(fallback_codec_str)
+            logger.warning(f"[{track_id}] {primary_codec.upper()} not available, trying {fallback_codec_str.upper()}")
+
+            codec_map = {
+                "aac-legacy": SongCodec.AAC_LEGACY,
+                "aac-he-legacy": SongCodec.AAC_HE_LEGACY,
+                "aac": SongCodec.AAC,
+                "aac-he": SongCodec.AAC_HE,
+            }
+            fallback_codec = codec_map.get(fallback_codec_str, SongCodec.AAC_LEGACY)
+
+            try:
+                fallback_downloader = self._create_fallback_downloader(fallback_codec)
+
+                if not url_info:
+                    track_url = download_item.media_metadata.get('attributes', {}).get('url', '')
+                    if track_url:
+                        url_info = fallback_downloader.get_url_info(track_url)
+
+                if not url_info:
+                    logger.error(f"[{track_id}] Cannot try {fallback_codec_str}: URL not available")
+                    continue
+
+                fallback_queue = await fallback_downloader.get_download_queue(url_info)
+                if not fallback_queue:
+                    logger.error(f"[{track_id}] Failed to create queue for {fallback_codec_str}")
+                    continue
+
+                fallback_item = fallback_queue[0]
+
+                if not fallback_item.stream_info:
+                    logger.warning(f"[{track_id}] {fallback_codec_str.upper()} stream not available")
+                    continue
+
+                logger.info(f"[{track_id}] Downloading with {fallback_codec_str.upper()}...")
+                await fallback_downloader.download(fallback_item)
+
+                logger.info(f"[{track_id}] Successfully downloaded with {fallback_codec_str.upper()}")
+                fallback_message = f"⚠️ {primary_codec.upper()} not available, using {fallback_codec_str.upper()} instead"
+                return fallback_item, fallback_message
+
+            except Exception as e:
+                logger.warning(f"[{track_id}] {fallback_codec_str.upper()} failed: {e}")
+                continue
+
+        raise Exception(
+            f"Track '{track_artist} - {track_title}' is not available in any AAC format. "
+            f"Attempted: {', '.join(attempted_codecs)}. "
+            "This track may not be available in your region or subscription tier."
+        )
+
     def parse_url(self, url: str) -> UrlInfo | None:
         return self.downloader.get_url_info(url)
 
@@ -171,6 +281,17 @@ class DownloaderService:
     async def download_track(self, download_item: DownloadItem, url_info: UrlInfo = None) -> tuple[str, str | None]:
         fallback_message = None
         high_quality_codecs = ['atmos', 'alac']
+
+        AAC_FALLBACK_CHAIN = {
+            'aac': ['aac-legacy', 'aac-he-legacy'],
+            'aac-he': ['aac', 'aac-legacy'],
+            'aac-binaural': ['aac', 'aac-legacy'],
+            'aac-he-binaural': ['aac-he', 'aac', 'aac-legacy'],
+            'aac-downmix': ['aac', 'aac-legacy'],
+            'aac-he-downmix': ['aac-he', 'aac-legacy'],
+            'aac-legacy': ['aac'],
+            'aac-he-legacy': ['aac-legacy']
+        }
 
         track_title = download_item.media_tags.title
         track_artist = download_item.media_tags.artist
@@ -218,39 +339,14 @@ class DownloaderService:
                         "It may not be available in your region or subscription tier."
                     )
 
-            if self.config.song_codec.lower() in high_quality_codecs and is_format_unavailable:
+            requested_codec = self.config.song_codec.lower()
+
+            if requested_codec in high_quality_codecs and is_format_unavailable:
                 logger.warning(f"[{track_id}] {self.config.song_codec.upper()} not available, falling back to AAC")
                 fallback_message = f"⚠️ {self.config.song_codec.upper()} not available, using AAC instead"
 
                 if not self.fallback_downloader:
-                    song_interface = AppleMusicSongInterface(self.interface)
-                    song_downloader = AppleMusicSongDownloader(
-                        base_downloader=self.base_downloader,
-                        interface=song_interface,
-                        codec=SongCodec.AAC,
-                        no_synced_lyrics=True
-                    )
-
-                    music_video_interface = AppleMusicMusicVideoInterface(self.interface)
-                    music_video_downloader = AppleMusicMusicVideoDownloader(
-                        base_downloader=self.base_downloader,
-                        interface=music_video_interface
-                    )
-
-                    uploaded_video_interface = AppleMusicUploadedVideoInterface(self.interface)
-                    uploaded_video_downloader = AppleMusicUploadedVideoDownloader(
-                        base_downloader=self.base_downloader,
-                        interface=uploaded_video_interface
-                    )
-
-                    self.fallback_downloader = AppleMusicDownloader(
-                        interface=self.interface,
-                        base_downloader=self.base_downloader,
-                        song_downloader=song_downloader,
-                        music_video_downloader=music_video_downloader,
-                        uploaded_video_downloader=uploaded_video_downloader,
-                        skip_processing=False
-                    )
+                    self.fallback_downloader = self._create_fallback_downloader(SongCodec.AAC)
 
                 if not url_info:
                     track_url = download_item.media_metadata.get('attributes', {}).get('url', '')
@@ -309,6 +405,15 @@ class DownloaderService:
                 else:
                     logger.error(f"[{track_id}] Failed to create fallback download queue")
                     raise Exception(f"Failed to create fallback download queue for track {track_id}")
+
+            elif requested_codec in AAC_FALLBACK_CHAIN and is_format_unavailable:
+                try:
+                    download_item, fallback_message = await self._try_aac_fallback_chain(
+                        download_item, url_info, requested_codec,
+                        track_id, track_artist, track_title
+                    )
+                except Exception:
+                    raise
             else:
                 raise
 
