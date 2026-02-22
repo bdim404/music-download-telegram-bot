@@ -24,22 +24,21 @@ pip install -r requirements.txt
 
 ### 2. 安装系统依赖
 
-Bot 需要 ffmpeg 进行音频处理：
-
 #### macOS
 ```bash
-brew install ffmpeg
+brew install bento4 ffmpeg
 ```
 
 #### Ubuntu/Debian
 ```bash
-sudo apt-get update
-sudo apt-get install ffmpeg
+sudo apt-get update && sudo apt-get install bento4 ffmpeg
 ```
 
-### 3.（可选）部署 Wrapper 服务以支持 ALAC / Dolby Atmos
+### 3.（可选）部署 Wrapper + amdecrypt 以支持 ALAC / Dolby Atmos
 
-如需下载无损（ALAC）或杜比全景声（Atmos）格式，需要运行 [wrapper](https://github.com/WorldObservationLog/wrapper) 服务。这替代了 gamdl 原先使用的 `mp4decrypt`/`pywidevine` 方案。
+如需下载无损（ALAC）或杜比全景声（Atmos）格式，需要以下三个组件：
+
+**1. wrapper** — 运行 [wrapper](https://github.com/WorldObservationLog/wrapper) 服务（处理账号认证）：
 
 ```bash
 docker run -d \
@@ -49,7 +48,11 @@ docker run -d \
   wrapper
 ```
 
-启动后在 `config.yaml` 中设置 `use_wrapper: true` 并配置 `wrapper_url`。若 `use_wrapper` 为 `true` 但 wrapper 未运行，Bot 启动时将报错退出。
+**2. amdecrypt** — 从 [glomatico/amdecrypt](https://github.com/glomatico/amdecrypt/releases) 下载对应平台的二进制文件并加入 PATH。gamdl 会直接调用此工具解密音轨。
+
+**3. mp4decrypt** — 已通过上方 Bento4 安装，amdecrypt 内部会调用它。
+
+完成后在 `config.yaml` 中设置 `use_wrapper: true` 并配置 `wrapper_url`。若 `use_wrapper` 为 `true` 但 wrapper 未运行，Bot 启动时将报错退出。
 
 ### 4. 获取 Apple Music Cookies
 
@@ -134,7 +137,7 @@ bot/
 
 1. 需要有效的 Apple Music 订阅
 2. Cookies 定期(1-3个月)需要重新导出
-3. 确保安装了 mp4decrypt 和 ffmpeg
+3. 确保安装了 ffmpeg；若需 ALAC/Atmos，还需 amdecrypt 和 mp4decrypt（Bento4）
 4. 确保有足够的磁盘空间用于临时文件
 5. Telegram file_id 是永久的，可以重复使用
 6. 文件超过 50MB 将被跳过

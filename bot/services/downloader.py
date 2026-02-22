@@ -182,15 +182,6 @@ class DownloaderService:
                 logger.warning(f"[{track_id}] {self.config.song_codec.upper()} not available, falling back to AAC")
                 fallback_message = f"⚠️ {self.config.song_codec.upper()} not available, using AAC instead"
 
-                if not url_info:
-                    track_url = download_item.media_metadata.get('attributes', {}).get('url', '')
-                    if track_url:
-                        url_info = self.parse_url(track_url)
-
-                if not url_info:
-                    logger.error(f"[{track_id}] Cannot fallback: URL not available")
-                    raise
-
                 if not self.fallback_downloader:
                     song_interface = AppleMusicSongInterface(self.interface)
                     song_downloader = AppleMusicSongDownloader(
@@ -221,13 +212,25 @@ class DownloaderService:
                         skip_processing=False
                     )
 
+                if not url_info:
+                    track_url = download_item.media_metadata.get('attributes', {}).get('url', '')
+                    if track_url:
+                        url_info = self.fallback_downloader.get_url_info(track_url)
+
+                if not url_info:
+                    logger.error(f"[{track_id}] Cannot fallback: URL not available")
+                    raise
+
+                logger.info(f"[{track_id}] Creating fallback download queue...")
                 fallback_queue = await self.fallback_downloader.get_download_queue(url_info)
                 if fallback_queue:
                     fallback_item = fallback_queue[0]
+                    logger.info(f"[{track_id}] Fallback queue created, downloading with AAC codec...")
                     await self.fallback_downloader.download(fallback_item)
                     logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
                     download_item = fallback_item
                 else:
+                    logger.error(f"[{track_id}] Failed to create fallback download queue")
                     raise Exception(f"Failed to create fallback download queue for track {track_id}")
             else:
                 raise

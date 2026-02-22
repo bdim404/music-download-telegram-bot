@@ -24,22 +24,21 @@ pip install -r requirements.txt
 
 ### 2. Install System Dependencies
 
-The bot uses ffmpeg for processing. Install the following tools:
-
 #### macOS
 ```bash
-brew install ffmpeg
+brew install bento4 ffmpeg
 ```
 
 #### Ubuntu/Debian
 ```bash
-sudo apt-get update
-sudo apt-get install ffmpeg
+sudo apt-get update && sudo apt-get install bento4 ffmpeg
 ```
 
-### 3. (Optional) Set Up Wrapper Service for ALAC / Dolby Atmos
+### 3. (Optional) Set Up Wrapper + amdecrypt for ALAC / Dolby Atmos
 
-To enable lossless (ALAC) or Dolby Atmos downloads, you need the [wrapper](https://github.com/WorldObservationLog/wrapper) service running. This replaces the old `mp4decrypt`/`pywidevine` approach used by gamdl.
+To enable lossless (ALAC) or Dolby Atmos downloads, three components are needed:
+
+**1. wrapper** — run the [wrapper](https://github.com/WorldObservationLog/wrapper) service (handles auth):
 
 ```bash
 docker run -d \
@@ -48,6 +47,10 @@ docker run -d \
   -e args='-H 0.0.0.0' \
   wrapper
 ```
+
+**2. amdecrypt** — download the binary from [glomatico/amdecrypt](https://github.com/glomatico/amdecrypt/releases) and add it to your PATH. gamdl calls this binary directly to decrypt tracks.
+
+**3. mp4decrypt** — already installed via Bento4 above; amdecrypt uses it internally.
 
 Then set `use_wrapper: true` and configure `wrapper_url` in `config.yaml`. If the wrapper is not running, the bot will refuse to start when `use_wrapper` is `true`.
 
@@ -134,7 +137,7 @@ bot/
 
 1. An active Apple Music subscription is required
 2. Cookies need to be re-exported periodically (every 1-3 months)
-3. Ensure mp4decrypt and ffmpeg are installed
+3. Ensure ffmpeg is installed; for ALAC/Atmos: also amdecrypt and mp4decrypt (Bento4)
 4. Ensure sufficient disk space for temporary files
 5. Telegram file_id is permanent and can be reused
 6. Files larger than 50MB will be skipped
