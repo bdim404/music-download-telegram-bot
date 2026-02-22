@@ -1,5 +1,7 @@
 # Apple Music Download Telegram Bot
 
+> **Note:** This project is AI-generated. The code on the main branch may be unstable. For stable releases, please download from the [Releases](../../releases) page.
+
 A Telegram bot for downloading Apple Music tracks, albums, and playlists, powered by gamdl.
 
 ## Features

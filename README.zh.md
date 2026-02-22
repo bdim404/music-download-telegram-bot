@@ -1,5 +1,7 @@
 # Apple Music 下载 Telegram 机器人
 
+> **注意：** 本项目由 AI 生成，仓库主分支代码不稳定。稳定版代码请从 [Releases](../../releases) 页面下载。
+
 基于 gamdl 的 Apple Music 下载 Telegram 机器人。
 
 ## 功能特性

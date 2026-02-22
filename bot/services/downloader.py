@@ -256,9 +256,22 @@ class DownloaderService:
                         )
 
                     logger.info(f"[{track_id}] Fallback queue created, downloading with AAC codec...")
-                    await self.fallback_downloader.download(fallback_item)
-                    logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
-                    download_item = fallback_item
+                    try:
+                        await self.fallback_downloader.download(fallback_item)
+                        logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
+                        download_item = fallback_item
+                    except FormatNotAvailable:
+                        logger.error(
+                            f"[{track_id}] AAC fallback download failed: Format not available. "
+                            "Track is not available in any supported format (ALAC and AAC both unavailable)."
+                        )
+                        raise Exception(
+                            f"Track '{track_artist} - {track_title}' is not available for download in any format. "
+                            "This track may not be available in your region or subscription tier."
+                        )
+                    except Exception as e:
+                        logger.error(f"[{track_id}] AAC fallback download failed with unexpected error: {e}")
+                        raise
                 else:
                     logger.error(f"[{track_id}] Failed to create fallback download queue")
                     raise Exception(f"Failed to create fallback download queue for track {track_id}")
