@@ -20,6 +20,7 @@ from gamdl.downloader.downloader_song import AppleMusicSongDownloader
 from gamdl.downloader.downloader_music_video import AppleMusicMusicVideoDownloader
 from gamdl.downloader.downloader_uploaded_video import AppleMusicUploadedVideoDownloader
 from gamdl.downloader.types import DownloadItem, UrlInfo
+from gamdl.downloader.exceptions import FormatNotAvailable
 
 from ..config import Config
 
@@ -173,10 +174,28 @@ class DownloaderService:
         except Exception as e:
             error_msg = str(e).lower()
             is_format_unavailable = (
+                isinstance(e, FormatNotAvailable) or
                 'not available' in error_msg or
                 'not found' in error_msg or
                 'unsupported' in error_msg
             )
+
+            if isinstance(e, FormatNotAvailable):
+                has_enhanced_hls = (
+                    download_item.media_metadata.get('attributes', {})
+                    .get('extendedAssetUrls', {})
+                    .get('enhancedHls') is not None
+                )
+
+                if not has_enhanced_hls:
+                    logger.error(
+                        f"[{track_id}] Track not available: No enhanced HLS streams in metadata. "
+                        "This track may not be available in your region or with your subscription."
+                    )
+                    raise Exception(
+                        f"Track '{track_artist} - {track_title}' is not available for download. "
+                        "It may not be available in your region or subscription tier."
+                    )
 
             if self.config.song_codec.lower() in high_quality_codecs and is_format_unavailable:
                 logger.warning(f"[{track_id}] {self.config.song_codec.upper()} not available, falling back to AAC")
@@ -225,6 +244,17 @@ class DownloaderService:
                 fallback_queue = await self.fallback_downloader.get_download_queue(url_info)
                 if fallback_queue:
                     fallback_item = fallback_queue[0]
+
+                    if not fallback_item.stream_info:
+                        logger.error(
+                            f"[{track_id}] AAC fallback failed: Stream info not available. "
+                            "Track may not be downloadable in your region."
+                        )
+                        raise Exception(
+                            f"Track '{track_artist} - {track_title}' is not available in AAC format either. "
+                            "The track may not be available for download in your region or subscription."
+                        )
+
                     logger.info(f"[{track_id}] Fallback queue created, downloading with AAC codec...")
                     await self.fallback_downloader.download(fallback_item)
                     logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
