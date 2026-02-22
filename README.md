@@ -5,6 +5,8 @@ A Telegram bot for downloading Apple Music tracks, albums, and playlists, powere
 ## Features
 
 - Download Apple Music songs, albums, and playlists
+- ALAC (lossless) and Dolby Atmos downloads via [wrapper](https://github.com/WorldObservationLog/wrapper) service
+- Configurable audio codec (ALAC, Atmos, AAC, AC3, etc.) with automatic fallback to AAC
 - SQLite database caching to avoid duplicate downloads
 - Whitelist-based user access control
 - Concurrent download limits (2 per user, 5 global)
@@ -22,26 +24,34 @@ pip install -r requirements.txt
 
 ### 2. Install System Dependencies
 
-The bot uses pywidevine and mp4decrypt for decryption. Install the following tools:
+The bot uses ffmpeg for processing. Install the following tools:
 
 #### macOS
 ```bash
-brew install bento4 ffmpeg
+brew install ffmpeg
 ```
 
 #### Ubuntu/Debian
 ```bash
 sudo apt-get update
-sudo apt-get install bento4 ffmpeg
+sudo apt-get install ffmpeg
 ```
 
-#### Verify Installation
+### 3. (Optional) Set Up Wrapper Service for ALAC / Dolby Atmos
+
+To enable lossless (ALAC) or Dolby Atmos downloads, you need the [wrapper](https://github.com/WorldObservationLog/wrapper) service running. This replaces the old `mp4decrypt`/`pywidevine` approach used by gamdl.
+
 ```bash
-mp4decrypt --version
-ffmpeg -version
+docker run -d \
+  -p 10020:10020 -p 20020:20020 -p 30020:30020 \
+  -v ./rootfs/data:/app/rootfs/data \
+  -e args='-H 0.0.0.0' \
+  wrapper
 ```
 
-### 3. Get Apple Music Cookies
+Then set `use_wrapper: true` and configure `wrapper_url` in `config.yaml`. If the wrapper is not running, the bot will refuse to start when `use_wrapper` is `true`.
+
+### 4. Get Apple Music Cookies
 
 The bot requires cookies exported from Apple Music website for authentication.
 
@@ -67,9 +77,9 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://music.apple.c
 - Re-export after expiration
 - An active Apple Music subscription is required
 
-### 4. Configuration
+### 5. Configuration
 
-Edit `config.yaml`:
+Edit `config.yaml` (see `exmaple-config.yaml` for all options):
 
 ```yaml
 bot_token: "YOUR_BOT_TOKEN"  # Get from @BotFather
@@ -85,6 +95,14 @@ max_file_size_mb: 50
 
 database_path: "./data/cache.db"
 temp_path: "./data/temp"
+
+# Audio codec: atmos, alac, aac, aac-he, aac-legacy, ac3, etc.
+# Falls back to aac automatically if the track doesn't support the chosen codec
+song_codec: "atmos"
+
+# Wrapper service for ALAC / Dolby Atmos (requires wrapper running)
+use_wrapper: true
+wrapper_url: "127.0.0.1:10020"
 ```
 
 ## Running
@@ -130,8 +148,8 @@ A: Ensure you export cookies from https://music.apple.com while logged in with a
 **Q: "Subscription is not active"**
 A: Check that your Apple Music subscription is active
 
-**Q: mp4decrypt not found**
-A: Install Bento4 toolkit (see Installation section)
+**Q: Wrapper service not available**
+A: Start the wrapper Docker container (see Installation section) or set `use_wrapper: false` to fall back to AAC-only mode
 
 **Q: What if cookies expire?**
 A: Re-export cookies.txt from your browser and restart the bot

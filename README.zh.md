@@ -5,6 +5,8 @@
 ## 功能特性
 
 - 支持下载 Apple Music 歌曲、专辑和播放列表
+- 通过 [wrapper](https://github.com/WorldObservationLog/wrapper) 服务支持 ALAC（无损）和 Dolby Atmos 下载
+- 可配置音频编码（ALAC、Atmos、AAC、AC3 等），不支持时自动回退至 AAC
 - SQLite 数据库缓存，避免重复下载
 - 白名单用户访问控制
 - 并发下载限制(每用户 2 个，全局 5 个)
@@ -22,26 +24,34 @@ pip install -r requirements.txt
 
 ### 2. 安装系统依赖
 
-Bot 使用 pywidevine 和 mp4decrypt 进行解密，需要安装以下工具:
+Bot 需要 ffmpeg 进行音频处理：
 
 #### macOS
 ```bash
-brew install bento4 ffmpeg
+brew install ffmpeg
 ```
 
 #### Ubuntu/Debian
 ```bash
 sudo apt-get update
-sudo apt-get install bento4 ffmpeg
+sudo apt-get install ffmpeg
 ```
 
-#### 验证安装
+### 3.（可选）部署 Wrapper 服务以支持 ALAC / Dolby Atmos
+
+如需下载无损（ALAC）或杜比全景声（Atmos）格式，需要运行 [wrapper](https://github.com/WorldObservationLog/wrapper) 服务。这替代了 gamdl 原先使用的 `mp4decrypt`/`pywidevine` 方案。
+
 ```bash
-mp4decrypt --version
-ffmpeg -version
+docker run -d \
+  -p 10020:10020 -p 20020:20020 -p 30020:30020 \
+  -v ./rootfs/data:/app/rootfs/data \
+  -e args='-H 0.0.0.0' \
+  wrapper
 ```
 
-### 3. 获取 Apple Music Cookies
+启动后在 `config.yaml` 中设置 `use_wrapper: true` 并配置 `wrapper_url`。若 `use_wrapper` 为 `true` 但 wrapper 未运行，Bot 启动时将报错退出。
+
+### 4. 获取 Apple Music Cookies
 
 Bot 需要从 Apple Music 网站导出的 cookies 来进行认证。
 
@@ -67,9 +77,9 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://music.apple.c
 - 过期后需重新导出
 - 必须有激活的 Apple Music 订阅
 
-### 4. 配置文件
+### 5. 配置文件
 
-编辑 `config.yaml` 文件:
+编辑 `config.yaml`（完整选项参见 `exmaple-config.yaml`）:
 
 ```yaml
 bot_token: "YOUR_BOT_TOKEN"  # 从 @BotFather 获取
@@ -85,6 +95,14 @@ max_file_size_mb: 50
 
 database_path: "./data/cache.db"
 temp_path: "./data/temp"
+
+# 音频编码: atmos、alac、aac、aac-he、aac-legacy、ac3 等
+# 若歌曲不支持所选编码，将自动回退至 aac
+song_codec: "atmos"
+
+# Wrapper 服务（ALAC / Dolby Atmos 支持，需先启动 wrapper）
+use_wrapper: true
+wrapper_url: "127.0.0.1:10020"
 ```
 
 ## 运行
@@ -130,8 +148,8 @@ A: 确保从 https://music.apple.com 导出 cookies，并且已登录有订阅�
 **Q: "Subscription is not active"**
 A: 检查你的 Apple Music 订阅状态是否正常
 
-**Q: mp4decrypt not found**
-A: 安装 Bento4 工具套件(见安装部分)
+**Q: Wrapper 服务不可用**
+A: 启动 wrapper Docker 容器（见安装部分），或将 `use_wrapper` 设为 `false` 以仅使用 AAC 模式
 
 **Q: Cookies 过期了怎么办？**
 A: 重新从浏览器导出 cookies.txt 并重启 Bot
