@@ -114,7 +114,17 @@ class DownloaderService:
             "alac": SongCodec.ALAC
         }
 
-        selected_codec = codec_map.get(self.config.song_codec.lower(), SongCodec.AAC_LEGACY)
+        wrapper_required_codecs = ['atmos', 'alac']
+        requested_codec = self.config.song_codec.lower()
+
+        if not self.config.use_wrapper and requested_codec in wrapper_required_codecs:
+            logger.warning(
+                f"Codec '{requested_codec.upper()}' requires wrapper service, but use_wrapper is disabled. "
+                f"Falling back to AAC codec."
+            )
+            selected_codec = SongCodec.AAC
+        else:
+            selected_codec = codec_map.get(requested_codec, SongCodec.AAC_LEGACY)
 
         song_interface = AppleMusicSongInterface(self.interface)
         song_downloader = AppleMusicSongDownloader(
@@ -173,6 +183,17 @@ class DownloaderService:
             logger.info(f"[{track_id}] Download completed: {track_artist} - {track_title}")
         except Exception as e:
             error_msg = str(e).lower()
+
+            if 'license exchange' in error_msg or 'status":-1002' in error_msg:
+                logger.error(f"[{track_id}] DRM license authentication failed: {e}")
+                raise Exception(
+                    f"DRM authentication failed for '{track_artist} - {track_title}'. "
+                    "Please re-authenticate the wrapper service:\n"
+                    "1. Stop wrapper: docker ps | grep wrapper && docker stop <container_id>\n"
+                    "2. Clear auth: bash clear_wrapper_auth.sh\n"
+                    "3. Restart wrapper and re-authenticate"
+                )
+
             is_format_unavailable = (
                 isinstance(e, FormatNotAvailable) or
                 'not available' in error_msg or
@@ -260,17 +281,30 @@ class DownloaderService:
                         await self.fallback_downloader.download(fallback_item)
                         logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
                         download_item = fallback_item
-                    except FormatNotAvailable:
-                        logger.error(
-                            f"[{track_id}] AAC fallback download failed: Format not available. "
-                            "Track is not available in any supported format (ALAC and AAC both unavailable)."
-                        )
-                        raise Exception(
-                            f"Track '{track_artist} - {track_title}' is not available for download in any format. "
-                            "This track may not be available in your region or subscription tier."
-                        )
-                    except Exception as e:
-                        logger.error(f"[{track_id}] AAC fallback download failed with unexpected error: {e}")
+                    except Exception as fallback_error:
+                        fallback_error_msg = str(fallback_error).lower()
+
+                        if 'license exchange' in fallback_error_msg or 'status":-1002' in fallback_error_msg:
+                            logger.error(f"[{track_id}] AAC fallback: DRM license authentication failed: {fallback_error}")
+                            raise Exception(
+                                f"DRM authentication failed for '{track_artist} - {track_title}'. "
+                                "Please re-authenticate the wrapper service:\n"
+                                "1. Stop wrapper: docker ps | grep wrapper && docker stop <container_id>\n"
+                                "2. Clear auth: bash clear_wrapper_auth.sh\n"
+                                "3. Restart wrapper and re-authenticate"
+                            )
+
+                        if isinstance(fallback_error, FormatNotAvailable):
+                            logger.error(
+                                f"[{track_id}] AAC fallback download failed: Format not available. "
+                                "Track is not available in any supported format (ALAC and AAC both unavailable)."
+                            )
+                            raise Exception(
+                                f"Track '{track_artist} - {track_title}' is not available for download in any format. "
+                                "This track may not be available in your region or subscription tier."
+                            )
+
+                        logger.error(f"[{track_id}] AAC fallback download failed with unexpected error: {fallback_error}")
                         raise
                 else:
                     logger.error(f"[{track_id}] Failed to create fallback download queue")
