@@ -38,21 +38,7 @@ sudo apt-get update && sudo apt-get install bento4 ffmpeg
 
 ### 3. (Optional) Set Up Wrapper + amdecrypt for ALAC / Dolby Atmos
 
-To enable lossless (ALAC) or Dolby Atmos downloads, three components are needed:
-
-**1. wrapper** — run the [wrapper](https://github.com/WorldObservationLog/wrapper) service (handles auth):
-
-```bash
-docker run -d \
-  -p 10020:10020 -p 20020:20020 -p 30020:30020 \
-  -v ./rootfs/data:/app/rootfs/data \
-  -e args='-H 0.0.0.0' \
-  wrapper
-```
-
-**2. amdecrypt** — download the binary from [glomatico/amdecrypt](https://github.com/glomatico/amdecrypt/releases) and add it to your PATH. gamdl calls this binary directly to decrypt tracks.
-
-**3. mp4decrypt** — already installed via Bento4 above; amdecrypt uses it internally.
+To enable lossless (ALAC) or Dolby Atmos downloads, follow the setup instructions in the [gamdl README — Wrapper & amdecrypt](https://github.com/glomatico/gamdl?tab=readme-ov-file#%EF%B8%8F-wrapper--amdecrypt) section.
 
 Then set `use_wrapper: true` and configure `wrapper_url` in `config.yaml`. If the wrapper is not running, the bot will refuse to start when `use_wrapper` is `true`.
 

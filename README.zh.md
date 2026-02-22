@@ -38,21 +38,7 @@ sudo apt-get update && sudo apt-get install bento4 ffmpeg
 
 ### 3.（可选）部署 Wrapper + amdecrypt 以支持 ALAC / Dolby Atmos
 
-如需下载无损（ALAC）或杜比全景声（Atmos）格式，需要以下三个组件：
-
-**1. wrapper** — 运行 [wrapper](https://github.com/WorldObservationLog/wrapper) 服务（处理账号认证）：
-
-```bash
-docker run -d \
-  -p 10020:10020 -p 20020:20020 -p 30020:30020 \
-  -v ./rootfs/data:/app/rootfs/data \
-  -e args='-H 0.0.0.0' \
-  wrapper
-```
-
-**2. amdecrypt** — 从 [glomatico/amdecrypt](https://github.com/glomatico/amdecrypt/releases) 下载对应平台的二进制文件并加入 PATH。gamdl 会直接调用此工具解密音轨。
-
-**3. mp4decrypt** — 已通过上方 Bento4 安装，amdecrypt 内部会调用它。
+如需下载无损（ALAC）或杜比全景声（Atmos）格式，请参考 [gamdl README — Wrapper & amdecrypt](https://github.com/glomatico/gamdl?tab=readme-ov-file#%EF%B8%8F-wrapper--amdecrypt) 章节进行部署。
 
 完成后在 `config.yaml` 中设置 `use_wrapper: true` 并配置 `wrapper_url`。若 `use_wrapper` 为 `true` 但 wrapper 未运行，Bot 启动时将报错退出。
 
