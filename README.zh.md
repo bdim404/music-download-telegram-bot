@@ -18,13 +18,29 @@
 
 ## 安装
 
-### 1. 安装 Python 依赖
+### 方式一：通过 Nix 安装（推荐）
+
+如果你使用 [Nix](https://nixos.org/)，可以直接一条命令安装：
+
+```bash
+nix profile add github:bdim404/applemusic-download-telegram-bot
+```
+
+安装完成后，`music-download-telegram-bot` 命令即可在 PATH 中使用。在包含 `config.yaml` 和 `cookies.txt` 的目录下执行即可启动 Bot。
+
+> 需要启用 `flakes` 和 `nix-command` 实验性功能：在 `~/.config/nix/nix.conf` 中添加 `experimental-features = nix-command flakes`
+
+---
+
+### 方式二：手动安装
+
+#### 1. 安装 Python 依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 安装系统依赖
+#### 2. 安装系统依赖
 
 #### macOS
 ```bash
@@ -36,13 +52,13 @@ brew install bento4 ffmpeg
 sudo apt-get update && sudo apt-get install bento4 ffmpeg
 ```
 
-### 3.（可选）部署 Wrapper + amdecrypt 以支持 ALAC / Dolby Atmos
+#### 3.（可选）部署 Wrapper + amdecrypt 以支持 ALAC / Dolby Atmos
 
 如需下载无损（ALAC）或杜比全景声（Atmos）格式，请参考 [gamdl README — Wrapper & amdecrypt](https://github.com/glomatico/gamdl?tab=readme-ov-file#%EF%B8%8F-wrapper--amdecrypt) 章节进行部署。
 
 完成后在 `config.yaml` 中设置 `use_wrapper: true` 并配置 `wrapper_url`。若 `use_wrapper` 为 `true` 但 wrapper 未运行，Bot 启动时将报错退出。
 
-### 4. 获取 Apple Music Cookies
+#### 4. 获取 Apple Music Cookies
 
 Bot 需要从 Apple Music 网站导出的 cookies 来进行认证。
 
@@ -68,7 +84,7 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://music.apple.c
 - 过期后需重新导出
 - 必须有激活的 Apple Music 订阅
 
-### 5. 配置文件
+#### 5. 配置文件
 
 编辑 `config.yaml`（完整选项参见 `exmaple-config.yaml`）:
 
@@ -98,6 +114,12 @@ wrapper_url: "127.0.0.1:10020"
 
 ## 运行
 
+**Nix 安装方式：**
+```bash
+music-download-telegram-bot
+```
+
+**手动安装方式：**
 ```bash
 python -m bot.main
 ```

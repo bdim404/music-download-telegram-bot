@@ -18,13 +18,29 @@ A Telegram bot for downloading Apple Music tracks, albums, and playlists, powere
 
 ## Installation
 
-### 1. Install Python Dependencies
+### Option 1: Install via Nix (Recommended)
+
+If you use [Nix](https://nixos.org/), install with a single command:
+
+```bash
+nix profile add github:bdim404/applemusic-download-telegram-bot
+```
+
+This makes the `music-download-telegram-bot` command available in your PATH. Run it from a directory containing `config.yaml` and `cookies.txt`.
+
+> Requires the `flakes` and `nix-command` experimental features. Add `experimental-features = nix-command flakes` to `~/.config/nix/nix.conf`.
+
+---
+
+### Option 2: Manual Installation
+
+#### 1. Install Python Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Install System Dependencies
+#### 2. Install System Dependencies
 
 #### macOS
 ```bash
@@ -36,13 +52,13 @@ brew install bento4 ffmpeg
 sudo apt-get update && sudo apt-get install bento4 ffmpeg
 ```
 
-### 3. (Optional) Set Up Wrapper + amdecrypt for ALAC / Dolby Atmos
+#### 3. (Optional) Set Up Wrapper + amdecrypt for ALAC / Dolby Atmos
 
 To enable lossless (ALAC) or Dolby Atmos downloads, follow the setup instructions in the [gamdl README — Wrapper & amdecrypt](https://github.com/glomatico/gamdl?tab=readme-ov-file#%EF%B8%8F-wrapper--amdecrypt) section.
 
 Then set `use_wrapper: true` and configure `wrapper_url` in `config.yaml`. If the wrapper is not running, the bot will refuse to start when `use_wrapper` is `true`.
 
-### 4. Get Apple Music Cookies
+#### 4. Get Apple Music Cookies
 
 The bot requires cookies exported from Apple Music website for authentication.
 
@@ -68,7 +84,7 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://music.apple.c
 - Re-export after expiration
 - An active Apple Music subscription is required
 
-### 5. Configuration
+#### 5. Configuration
 
 Edit `config.yaml` (see `exmaple-config.yaml` for all options):
 
@@ -98,6 +114,12 @@ wrapper_url: "127.0.0.1:10020"
 
 ## Running
 
+**Nix installation:**
+```bash
+music-download-telegram-bot
+```
+
+**Manual installation:**
 ```bash
 python -m bot.main
 ```
