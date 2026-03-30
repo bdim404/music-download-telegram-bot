@@ -23,7 +23,7 @@
 如果你使用 [Nix](https://nixos.org/)，可以直接一条命令安装：
 
 ```bash
-nix profile add github:bdim404/applemusic-download-telegram-bot
+nix profile add github:bdim404//music-download-telegram-bot
 ```
 
 安装完成后，`music-download-telegram-bot` 命令即可在 PATH 中使用。在包含 `config.yaml` 和 `cookies.txt` 的目录下执行即可启动 Bot。

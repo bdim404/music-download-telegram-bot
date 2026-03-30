@@ -23,7 +23,7 @@ A Telegram bot for downloading Apple Music tracks, albums, and playlists, powere
 If you use [Nix](https://nixos.org/), install with a single command:
 
 ```bash
-nix profile add github:bdim404/applemusic-download-telegram-bot
+nix profile add github:bdim404/music-download-telegram-bot
 ```
 
 This makes the `music-download-telegram-bot` command available in your PATH. Run it from a directory containing `config.yaml` and `cookies.txt`.
