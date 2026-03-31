@@ -14,3 +14,4 @@ colorama>=0.4.6
 inquirerpy>=0.3.4
 
 gamdl
+protobuf>=5.29.5
