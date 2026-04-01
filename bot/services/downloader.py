@@ -130,7 +130,7 @@ class DownloaderService:
         song_downloader = AppleMusicSongDownloader(
             base_downloader=self.base_downloader,
             interface=song_interface,
-            codec=selected_codec,
+            codec_priority=[selected_codec],
             no_synced_lyrics=True
         )
 
@@ -167,7 +167,7 @@ class DownloaderService:
         song_downloader = AppleMusicSongDownloader(
             base_downloader=self.base_downloader,
             interface=song_interface,
-            codec=codec,
+            codec_priority=[codec],
             no_synced_lyrics=True
         )
 
