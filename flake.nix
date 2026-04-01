@@ -52,9 +52,24 @@
       );
     in
     {
-      packages = forAllSystems (system: {
-        default = pythonSets.${system}.mkVirtualEnv "music-download-telegram-bot-env" workspace.deps.default;
-      });
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          venv = pythonSets.${system}.mkVirtualEnv "music-download-telegram-bot-env" workspace.deps.default;
+        in
+        {
+          default = pkgs.symlinkJoin {
+            name = "music-download-telegram-bot";
+            paths = [ venv ];
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            postBuild = ''
+              wrapProgram $out/bin/music-download-telegram-bot \
+                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.bento4 ]}
+            '';
+          };
+        }
+      );
 
       devShells = forAllSystems (
         system:
