@@ -92,7 +92,7 @@ class DownloaderService:
             temp_path=self.config.temp_path,
             use_wrapper=self.config.use_wrapper,
             wrapper_decrypt_ip=self.config.wrapper_url,
-            amdecrypt_path='amdecrypt',
+            mp4decrypt_path='mp4decrypt',
             wvd_path=None,
             save_cover=False,
             save_playlist=False,
