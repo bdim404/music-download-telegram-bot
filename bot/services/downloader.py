@@ -1,3 +1,4 @@
+import re
 import sys
 import logging
 import socket
@@ -8,6 +9,32 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "gamdl"))
 logger = logging.getLogger(__name__)
 
 from gamdl.api.apple_music_api import AppleMusicApi
+
+_APPLE_MUSIC_URL = "https://music.apple.com"
+
+
+async def _patched_get_token(self) -> str:
+    response = await self.client.get(_APPLE_MUSIC_URL)
+    home_page = response.text
+
+    index_js_uri_match = re.search(r"/(assets/index[~-][^/\"]+\.js)", home_page)
+    if not index_js_uri_match:
+        raise Exception("index.js URI not found in Apple Music homepage")
+    index_js_uri = index_js_uri_match.group(1)
+
+    response = await self.client.get(f"{_APPLE_MUSIC_URL}/{index_js_uri}")
+    index_js_page = response.text
+
+    token_match = re.search(
+        r'"(eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+)"',
+        index_js_page,
+    )
+    if not token_match:
+        raise Exception("Token not found in index.js page")
+    return token_match.group(1)
+
+
+AppleMusicApi._get_token = _patched_get_token
 from gamdl.api.itunes_api import ItunesApi
 from gamdl.interface import AppleMusicInterface
 from gamdl.interface.interface_song import AppleMusicSongInterface
