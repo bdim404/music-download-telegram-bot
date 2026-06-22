@@ -18,9 +18,9 @@ from .services.sender import SenderService
 from .services.health import health_check_loop, notify_admins, systemd_notify, watchdog_loop
 from .middleware.whitelist import WhitelistMiddleware
 from .middleware.concurrency import ConcurrencyMiddleware
-from .handlers.start import start_handler
+from .handlers.start import help_handler, start_handler
 from .handlers.link import link_handler
-from .handlers.settings import allow_handler, codec_handler, deny_handler
+from .handlers.settings import allow_handler, codec_handler, deny_handler, list_handler
 from .handlers.error import error_handler
 from .version import get_version
 
@@ -107,9 +107,11 @@ async def main():
     application.bot_data['concurrency'] = concurrency
 
     application.add_handler(CommandHandler("start", start_handler))
+    application.add_handler(CommandHandler("help", help_handler))
     application.add_handler(CommandHandler("codec", codec_handler))
     application.add_handler(CommandHandler("allow", allow_handler))
     application.add_handler(CommandHandler("deny", deny_handler))
+    application.add_handler(CommandHandler("list", list_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, link_handler))
     application.add_error_handler(error_handler)
 

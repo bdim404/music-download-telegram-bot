@@ -62,6 +62,15 @@ class CacheService:
         user = await self.get_user(user_id)
         return bool(user and user.get('is_whitelisted'))
 
+    async def list_whitelisted_users(self) -> list[dict]:
+        query = """
+        SELECT user_id, username, first_name, download_codec, download_count, last_activity, created_at
+        FROM users
+        WHERE is_whitelisted = 1
+        ORDER BY last_activity DESC, created_at DESC
+        """
+        return await self.db.fetch_all(query)
+
     async def set_user_whitelist(
         self,
         user_id: int,

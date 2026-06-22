@@ -140,13 +140,13 @@ git push --follow-tags
 
 ## Usage
 
-1. After starting the bot, send `/start` command
+1. After starting the bot, send `/start` or `/help`
 2. Send Apple Music links, for example:
    - Single track: `https://music.apple.com/us/album/.../1234567?i=1234568`
    - Album: `https://music.apple.com/us/album/.../1234567`
    - Playlist: `https://music.apple.com/us/playlist/.../pl.xxx`
 3. Users can run `/codec` to view their codec and `/codec alac`, `/codec aac`, etc. to set a personal preference
-4. Super admins can manage the database whitelist with `/allow <user_id>` and `/deny <user_id>`, or reply to a user with `/allow`
+4. Super admins can manage the database whitelist with `/allow <user_id>` and `/deny <user_id>`, list access with `/list`, or reply to a user with `/allow`
 
 ## Project Structure
 

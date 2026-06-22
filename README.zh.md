@@ -140,13 +140,13 @@ git push --follow-tags
 
 ## 使用方法
 
-1. 启动 Bot 后，发送 `/start` 命令
+1. 启动 Bot 后，发送 `/start` 或 `/help`
 2. 发送 Apple Music 链接，例如:
    - 单曲: `https://music.apple.com/us/album/.../1234567?i=1234568`
    - 专辑: `https://music.apple.com/us/album/.../1234567`
    - 播放列表: `https://music.apple.com/us/playlist/.../pl.xxx`
 3. 用户可用 `/codec` 查看自己的下载编码，用 `/codec alac`、`/codec aac` 等设置个人偏好
-4. 超级管理员可用 `/allow <user_id>` 和 `/deny <user_id>` 管理数据库白名单，也可以回复用户消息发送 `/allow`
+4. 超级管理员可用 `/allow <user_id>` 和 `/deny <user_id>` 管理数据库白名单，用 `/list` 查看当前白名单，也可以回复用户消息发送 `/allow`
 
 ## 项目结构
 
