@@ -92,8 +92,10 @@ Edit `config.yaml` (see `exmaple-config.yaml` for all options):
 bot_token: "YOUR_BOT_TOKEN"  # Get from @BotFather
 cookies_path: "./cookies.txt"  # Path to cookies file
 
-whitelist_users:  # Telegram user IDs allowed to use the bot
+admin_users:  # Super admins: can grant access and receive health notifications
   - 123456789
+
+whitelist_users:  # Telegram user IDs allowed to use the bot
   - 987654321
 
 max_concurrent_per_user: 2
@@ -110,6 +112,8 @@ song_codec: "atmos"
 # Wrapper service for ALAC / Dolby Atmos (requires wrapper running)
 use_wrapper: true
 wrapper_url: "127.0.0.1:10020"
+
+health_check_interval_seconds: 300
 ```
 
 ## Running
@@ -131,6 +135,8 @@ python -m bot.main
    - Single track: `https://music.apple.com/us/album/.../1234567?i=1234568`
    - Album: `https://music.apple.com/us/album/.../1234567`
    - Playlist: `https://music.apple.com/us/playlist/.../pl.xxx`
+3. Users can run `/codec` to view their codec and `/codec alac`, `/codec aac`, etc. to set a personal preference
+4. Super admins can manage the database whitelist with `/allow <user_id>` and `/deny <user_id>`, or reply to a user with `/allow`
 
 ## Project Structure
 

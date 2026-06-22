@@ -9,5 +9,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Supported links:\n"
         "- Songs: https://music.apple.com/.../song/.../...\n"
         "- Albums: https://music.apple.com/.../album/.../...\n"
-        "- Playlists: https://music.apple.com/.../playlist/.../..."
+        "- Playlists: https://music.apple.com/.../playlist/.../...\n\n"
+        "Commands:\n"
+        "- /codec: show your download codec\n"
+        "- /codec aac: set your download codec"
     )

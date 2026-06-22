@@ -7,6 +7,7 @@ from pathlib import Path
 class Config:
     bot_token: str
     cookies_path: str = "./cookies.txt"
+    admin_users: list[int] = field(default_factory=list)
     whitelist_users: list[int] = field(default_factory=list)
     whitelist_groups: list[int] = field(default_factory=list)
     archive_channel: str = "@applemusicachive"
@@ -21,6 +22,8 @@ class Config:
     song_codec: str = "aac-legacy"
     use_wrapper: bool = False
     wrapper_url: str = "127.0.0.1:10020"
+
+    health_check_interval_seconds: int = 300
 
     @classmethod
     def load(cls, path: str = "config.yaml"):

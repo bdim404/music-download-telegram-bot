@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
 User=root
 Group=root
 WorkingDirectory=/etc/music-download-telegram-bot
@@ -12,6 +12,8 @@ Environment="PATH=/root/.nix-profile/bin:/usr/local/sbin:/usr/local/bin:/usr/sbi
 ExecStart=/etc/music-download-telegram-bot/venv/bin/python -m bot.main
 Restart=always
 RestartSec=10
+WatchdogSec=60
+NotifyAccess=main
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=music-download-bot

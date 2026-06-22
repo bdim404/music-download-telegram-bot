@@ -4,9 +4,14 @@ bot_token: "YOUR_BOT_TOKEN"
 # Apple Music cookies file path
 cookies_path: "./cookies.txt"
 
+# Super administrator Telegram user IDs.
+# Admins can use /allow and /deny, receive startup/shutdown/error/health notifications,
+# and are always allowed to use the bot.
+admin_users:
+  - 1234567890
+
 # User IDs allowed to use the bot
 whitelist_users:
-  - 1234567890
   - 987654321
 
 # Group IDs allowed to use the bot
@@ -48,3 +53,7 @@ use_wrapper: true
 
 # Wrapper service address (host:port)
 wrapper_url: "127.0.0.1:10020"
+
+# Bot API health check interval in seconds.
+# systemd watchdog is controlled by WatchdogSec in music-download-bot.service.
+health_check_interval_seconds: 300

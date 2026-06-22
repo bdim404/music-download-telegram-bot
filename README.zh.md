@@ -92,8 +92,10 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://music.apple.c
 bot_token: "YOUR_BOT_TOKEN"  # 从 @BotFather 获取
 cookies_path: "./cookies.txt"  # Cookies 文件路径
 
-whitelist_users:  # 允许使用的 Telegram 用户 ID
+admin_users:  # 超级管理员：可授权用户并接收健康通知
   - 123456789
+
+whitelist_users:  # 允许使用的 Telegram 用户 ID
   - 987654321
 
 max_concurrent_per_user: 2
@@ -110,6 +112,8 @@ song_codec: "atmos"
 # Wrapper 服务（ALAC / Dolby Atmos 支持，需先启动 wrapper）
 use_wrapper: true
 wrapper_url: "127.0.0.1:10020"
+
+health_check_interval_seconds: 300
 ```
 
 ## 运行
@@ -131,6 +135,8 @@ python -m bot.main
    - 单曲: `https://music.apple.com/us/album/.../1234567?i=1234568`
    - 专辑: `https://music.apple.com/us/album/.../1234567`
    - 播放列表: `https://music.apple.com/us/playlist/.../pl.xxx`
+3. 用户可用 `/codec` 查看自己的下载编码，用 `/codec alac`、`/codec aac` 等设置个人偏好
+4. 超级管理员可用 `/allow <user_id>` 和 `/deny <user_id>` 管理数据库白名单，也可以回复用户消息发送 `/allow`
 
 ## 项目结构
 
