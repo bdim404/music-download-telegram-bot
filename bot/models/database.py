@@ -42,9 +42,6 @@ class Database:
         await self.db.execute("""
             CREATE INDEX IF NOT EXISTS idx_apple_music_id ON songs(apple_music_id)
         """)
-        await self.db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_songs_codec ON songs(codec)
-        """)
 
         await self.db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -67,6 +64,9 @@ class Database:
     async def _migrate_tables(self):
         await self._migrate_songs_codec_cache()
         await self._ensure_column("users", "download_codec", "TEXT")
+        await self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_songs_codec ON songs(codec)
+        """)
         await self.db.commit()
 
     async def _ensure_column(self, table: str, column: str, definition: str):
