@@ -2,6 +2,7 @@ import re
 import sys
 import logging
 import socket
+import asyncio
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "gamdl"))
@@ -76,6 +77,22 @@ AAC_FALLBACK_CHAIN = {
     'aac-legacy': ['aac'],
     'aac-he-legacy': ['aac-legacy']
 }
+RECOVERABLE_CODEC_ERROR_KEYWORDS = (
+    "not available",
+    "not found",
+    "unsupported",
+    "incompletereaderror",
+    "incomplete read",
+    "0 bytes read",
+    "decrypt_samples",
+    "decrypt_file",
+    "amdecrypt",
+    "connection reset",
+    "connection aborted",
+    "broken pipe",
+    "timed out",
+    "timeout",
+)
 
 
 class DownloaderService:
@@ -105,6 +122,13 @@ class DownloaderService:
         if not self.is_codec_available(normalized):
             return "aac"
         return normalized
+
+    def is_recoverable_codec_error(self, error: Exception) -> bool:
+        error_msg = str(error).lower()
+        return (
+            isinstance(error, (FormatNotAvailable, asyncio.IncompleteReadError)) or
+            any(keyword in error_msg for keyword in RECOVERABLE_CODEC_ERROR_KEYWORDS)
+        )
 
     def _check_wrapper_available(self, timeout: int = 2) -> bool:
         try:
@@ -336,12 +360,7 @@ class DownloaderService:
                     "3. Restart wrapper and re-authenticate"
                 )
 
-            is_format_unavailable = (
-                isinstance(e, FormatNotAvailable) or
-                'not available' in error_msg or
-                'not found' in error_msg or
-                'unsupported' in error_msg
-            )
+            is_format_unavailable = self.is_recoverable_codec_error(e)
 
             if isinstance(e, FormatNotAvailable):
                 has_enhanced_hls = (

@@ -52,20 +52,40 @@ async def watchdog_loop(application):
 
 async def health_check_loop(application):
     config = application.bot_data.get('config')
+    downloader = application.bot_data.get('downloader')
     interval = getattr(config, 'health_check_interval_seconds', 300) if config else 300
-    was_healthy = True
+    bot_was_healthy = True
+    wrapper_was_healthy = True
 
     while True:
         await asyncio.sleep(interval)
         try:
             me = await application.bot.get_me()
-            if not was_healthy:
+            if not bot_was_healthy:
                 await notify_admins(application, f"Bot health restored: @{me.username}")
-            was_healthy = True
+            bot_was_healthy = True
             systemd_notify(f"STATUS=Bot healthy: @{me.username}")
         except Exception as e:
             logger.exception("Bot health check failed")
-            if was_healthy:
+            if bot_was_healthy:
                 await notify_admins(application, f"Bot health check failed: {type(e).__name__}: {e}")
-            was_healthy = False
+            bot_was_healthy = False
             systemd_notify(f"STATUS=Bot health check failed: {type(e).__name__}")
+
+        if not getattr(config, 'use_wrapper', False):
+            continue
+
+        try:
+            wrapper_healthy = bool(downloader and downloader._check_wrapper_available())
+        except Exception as e:
+            logger.warning(f"Wrapper health check raised: {e}")
+            wrapper_healthy = False
+
+        if wrapper_healthy and not wrapper_was_healthy:
+            logger.info(f"Wrapper health restored: {config.wrapper_url}")
+            await notify_admins(application, f"Wrapper health restored: {config.wrapper_url}")
+        elif not wrapper_healthy and wrapper_was_healthy:
+            logger.warning(f"Wrapper health check failed: {config.wrapper_url}")
+            await notify_admins(application, f"Wrapper health check failed: {config.wrapper_url}")
+
+        wrapper_was_healthy = wrapper_healthy

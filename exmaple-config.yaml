@@ -57,5 +57,7 @@ use_wrapper: true
 wrapper_url: "127.0.0.1:10020"
 
 # Bot API health check interval in seconds.
+# When use_wrapper is true, wrapper TCP health is checked on the same interval
+# and admins are notified when it goes down or recovers.
 # systemd watchdog is controlled by WatchdogSec in music-download-bot.service.
 health_check_interval_seconds: 300
