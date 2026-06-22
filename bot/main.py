@@ -114,6 +114,7 @@ async def main():
         f"{len(config.whitelist_groups)} groups, {len(config.admin_users)} admins"
     )
     logger.info(f"Concurrency limits: {config.max_concurrent_per_user} per user, {config.max_concurrent_global} global")
+    logger.info(f"Telegram update concurrency: {config.max_concurrent_updates}")
 
     Path(config.temp_path).mkdir(parents=True, exist_ok=True)
 
@@ -128,6 +129,7 @@ async def main():
         Application.builder()
         .token(config.bot_token)
         .request(request)
+        .concurrent_updates(config.max_concurrent_updates)
         .build()
     )
 

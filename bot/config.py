@@ -14,6 +14,7 @@ class Config:
 
     max_concurrent_per_user: int = 2
     max_concurrent_global: int = 5
+    max_concurrent_updates: int = 16
     max_file_size_mb: int = 50
 
     database_path: str = "./data/cache.db"

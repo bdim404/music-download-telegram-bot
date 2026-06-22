@@ -100,6 +100,7 @@ whitelist_users:  # Telegram user IDs allowed to use the bot
 
 max_concurrent_per_user: 2
 max_concurrent_global: 5
+max_concurrent_updates: 16  # Telegram updates handled concurrently; keep above download concurrency
 max_file_size_mb: 50
 
 database_path: "./data/cache.db"
