@@ -49,6 +49,7 @@ class Database:
                 username TEXT,
                 first_name TEXT,
                 is_whitelisted BOOLEAN DEFAULT 0,
+                send_lyrics BOOLEAN DEFAULT 0,
                 download_count INTEGER DEFAULT 0,
                 last_activity TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -64,6 +65,7 @@ class Database:
     async def _migrate_tables(self):
         await self._migrate_songs_codec_cache()
         await self._ensure_column("users", "download_codec", "TEXT")
+        await self._ensure_column("users", "send_lyrics", "BOOLEAN DEFAULT 0")
         await self.db.execute("""
             CREATE INDEX IF NOT EXISTS idx_songs_codec ON songs(codec)
         """)

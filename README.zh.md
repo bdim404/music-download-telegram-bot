@@ -148,7 +148,8 @@ git push --follow-tags
    - 专辑: `https://music.apple.com/us/album/.../1234567`
    - 播放列表: `https://music.apple.com/us/playlist/.../pl.xxx`
 3. 用户可用 `/codec` 查看自己的下载编码，用 `/codec alac`、`/codec aac` 等设置个人偏好
-4. 超级管理员可用 `/allow <user_id>` 和 `/deny <user_id>` 管理数据库白名单，用 `/list` 查看当前白名单，也可以回复用户消息发送 `/allow`
+4. 用户可用 `/lyrics on` 开启歌词文件；默认关闭，有歌词时会在音频后附送 `.lrc`
+5. 超级管理员可用 `/allow <user_id>` 和 `/deny <user_id>` 管理数据库白名单，用 `/list` 查看当前白名单，也可以回复用户消息发送 `/allow`
 
 ## 项目结构
 

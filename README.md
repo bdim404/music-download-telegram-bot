@@ -148,7 +148,8 @@ git push --follow-tags
    - Album: `https://music.apple.com/us/album/.../1234567`
    - Playlist: `https://music.apple.com/us/playlist/.../pl.xxx`
 3. Users can run `/codec` to view their codec and `/codec alac`, `/codec aac`, etc. to set a personal preference
-4. Super admins can manage the database whitelist with `/allow <user_id>` and `/deny <user_id>`, list access with `/list`, or reply to a user with `/allow`
+4. Users can run `/lyrics on` to receive `.lrc` lyrics files after audio when lyrics are available; default is off
+5. Super admins can manage the database whitelist with `/allow <user_id>` and `/deny <user_id>`, list access with `/list`, or reply to a user with `/allow`
 
 ## Project Structure
 

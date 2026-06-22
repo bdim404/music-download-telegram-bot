@@ -64,7 +64,7 @@ class CacheService:
 
     async def list_whitelisted_users(self) -> list[dict]:
         query = """
-        SELECT user_id, username, first_name, download_codec, download_count, last_activity, created_at
+        SELECT user_id, username, first_name, download_codec, send_lyrics, download_count, last_activity, created_at
         FROM users
         WHERE is_whitelisted = 1
         ORDER BY last_activity DESC, created_at DESC
@@ -93,6 +93,27 @@ class CacheService:
         if user and user.get('download_codec'):
             return user['download_codec']
         return default_codec
+
+    async def get_user_send_lyrics(self, user_id: int) -> bool:
+        user = await self.get_user(user_id)
+        return bool(user and user.get('send_lyrics'))
+
+    async def set_user_send_lyrics(
+        self,
+        user_id: int,
+        send_lyrics: bool,
+        username: str = None,
+        first_name: str = None
+    ):
+        query = """
+        INSERT INTO users (user_id, username, first_name, send_lyrics)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            username = COALESCE(excluded.username, username),
+            first_name = COALESCE(excluded.first_name, first_name),
+            send_lyrics = excluded.send_lyrics
+        """
+        await self.db.execute(query, (user_id, username, first_name, int(send_lyrics)))
 
     async def set_user_codec(
         self,

@@ -21,7 +21,7 @@ from .middleware.whitelist import WhitelistMiddleware
 from .middleware.concurrency import ConcurrencyMiddleware
 from .handlers.start import help_handler, start_handler
 from .handlers.link import link_handler
-from .handlers.settings import allow_handler, codec_handler, deny_handler, list_handler
+from .handlers.settings import allow_handler, codec_handler, deny_handler, list_handler, lyrics_handler
 from .handlers.error import error_handler
 from .version import get_version
 
@@ -39,6 +39,7 @@ async def configure_bot_commands(application, config):
         BotCommand("start", "Show help"),
         BotCommand("help", "Show help"),
         BotCommand("codec", "Show or set your download codec"),
+        BotCommand("lyrics", "Show or set lyrics file delivery"),
     ]
     admin_commands = [
         *user_commands,
@@ -141,6 +142,7 @@ async def main():
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("help", help_handler))
     application.add_handler(CommandHandler("codec", codec_handler))
+    application.add_handler(CommandHandler("lyrics", lyrics_handler))
     application.add_handler(CommandHandler("allow", allow_handler))
     application.add_handler(CommandHandler("deny", deny_handler))
     application.add_handler(CommandHandler("list", list_handler))

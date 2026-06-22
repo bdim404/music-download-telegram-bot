@@ -72,6 +72,74 @@ async def get_effective_codec(context: ContextTypes.DEFAULT_TYPE, user_id: int) 
     return downloader.effective_codec(codec)
 
 
+async def get_send_lyrics(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
+    cache = context.bot_data['cache']
+    return await cache.get_user_send_lyrics(user_id)
+
+
+def get_synced_lyrics_text(item) -> Optional[str]:
+    lyrics = getattr(item, "lyrics", None)
+    return getattr(lyrics, "synced", None) if lyrics else None
+
+
+def get_lyrics_path(item, file_path: Optional[str], temp_path: str) -> Path:
+    synced_path = getattr(item, "synced_lyrics_path", None)
+    if synced_path:
+        return Path(synced_path)
+
+    if file_path:
+        return Path(file_path).with_suffix(".lrc")
+
+    track_id = item.media_metadata.get('id', 'lyrics')
+    return Path(temp_path) / f"{track_id}.lrc"
+
+
+async def send_lyrics_if_enabled(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    item,
+    enabled: bool,
+    file_path: Optional[str] = None,
+    message_id: Optional[int] = None
+):
+    if not enabled:
+        return
+    if item is None:
+        return
+
+    lyrics_text = get_synced_lyrics_text(item)
+    if not lyrics_text:
+        return
+
+    config = context.bot_data['config']
+    lyrics_path = get_lyrics_path(item, file_path, config.temp_path)
+    created_file = False
+
+    if not lyrics_path.exists():
+        lyrics_path.parent.mkdir(parents=True, exist_ok=True)
+        lyrics_path.write_text(lyrics_text, encoding="utf8")
+        created_file = True
+
+    try:
+        with open(lyrics_path, 'rb') as lyrics_file:
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=lyrics_file,
+                filename=lyrics_path.name,
+                caption="Lyrics",
+                reply_to_message_id=message_id,
+                write_timeout=120.0,
+                read_timeout=120.0,
+                connect_timeout=60.0
+            )
+        logger.info(f"Sent lyrics file: {lyrics_path.name}")
+    except Exception as e:
+        logger.warning(f"Failed to send lyrics file {lyrics_path}: {e}")
+    finally:
+        if created_file and lyrics_path.exists():
+            lyrics_path.unlink()
+
+
 async def safe_delete_user_message(user_msg):
     try:
         await user_msg.delete()
@@ -179,7 +247,8 @@ async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     try:
         codec = await get_effective_codec(context, update.effective_user.id)
-        download_queue = await downloader.get_download_queue(url_info, codec)
+        send_lyrics = await get_send_lyrics(context, update.effective_user.id)
+        download_queue = await downloader.get_download_queue(url_info, codec, send_lyrics)
 
         if not download_queue:
             await send_message_with_retry(
@@ -190,9 +259,9 @@ async def process_single_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if len(download_queue) > 1:
             await safe_edit_status(status_msg, f"Found {len(download_queue)} songs")
-            await handle_collection(update, context, download_queue, status_msg, is_album_request, reply_to, codec)
+            await handle_collection(update, context, download_queue, status_msg, is_album_request, reply_to, codec, send_lyrics)
         else:
-            await handle_single_track(update, context, download_queue[0], status_msg, reply_to, codec)
+            await handle_single_track(update, context, download_queue[0], status_msg, reply_to, codec, send_lyrics)
 
     except Exception as e:
         logger.exception(f"Error processing link: {url}")
@@ -232,16 +301,17 @@ async def process_multiple_urls(update: Update, context: ContextTypes.DEFAULT_TY
                 continue
 
             codec = await get_effective_codec(context, update.effective_user.id)
-            download_queue = await downloader.get_download_queue(url_info, codec)
+            send_lyrics = await get_send_lyrics(context, update.effective_user.id)
+            download_queue = await downloader.get_download_queue(url_info, codec, send_lyrics)
             if not download_queue:
                 logger.warning(f"No songs found for URL {idx}/{total_urls}: {url}")
                 failed += 1
                 continue
 
             if len(download_queue) > 1:
-                await handle_collection(update, context, download_queue, None, False, reply_to, codec)
+                await handle_collection(update, context, download_queue, None, False, reply_to, codec, send_lyrics)
             else:
-                await handle_single_track(update, context, download_queue[0], None, reply_to, codec)
+                await handle_single_track(update, context, download_queue[0], None, reply_to, codec, send_lyrics)
 
             processed += 1
 
@@ -262,7 +332,8 @@ async def handle_single_track(
     item,
     status_msg=None,
     message_id: Optional[int] = None,
-    codec: Optional[str] = None
+    codec: Optional[str] = None,
+    send_lyrics: Optional[bool] = None
 ):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -273,6 +344,7 @@ async def handle_single_track(
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     codec = codec or await get_effective_codec(context, user_id)
+    send_lyrics = send_lyrics if send_lyrics is not None else await get_send_lyrics(context, user_id)
 
     if item.error:
         await send_message_with_retry(
@@ -292,6 +364,7 @@ async def handle_single_track(
         logger.info(f"Cache hit for {apple_music_id}")
         await safe_delete_status(status_msg)
         await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
+        await send_lyrics_if_enabled(context, chat_id, item, send_lyrics, message_id=message_id)
         await cache.update_user_activity(
             user_id,
             update.effective_user.username,
@@ -308,6 +381,7 @@ async def handle_single_track(
             logger.info(f"Cache hit after waiting for {apple_music_id}")
             await safe_delete_status(status_msg)
             await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
+            await send_lyrics_if_enabled(context, chat_id, item, send_lyrics, message_id=message_id)
             await cache.update_user_activity(
                 user_id,
                 update.effective_user.username,
@@ -324,7 +398,7 @@ async def handle_single_track(
 
         await safe_edit_status(status_msg, f"Downloading: {format_track_label(item)}")
 
-        file_path, fallback_message = await downloader.download_track(item, codec=codec)
+        file_path, fallback_message = await downloader.download_track(item, codec=codec, include_lyrics=send_lyrics)
 
         if not file_path or not Path(file_path).exists():
             raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
@@ -342,6 +416,7 @@ async def handle_single_track(
 
         metadata = downloader.extract_metadata(item)
         message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
+        await send_lyrics_if_enabled(context, chat_id, item, send_lyrics, file_path, message_id)
 
         try:
             await cache.store_song(
@@ -380,6 +455,9 @@ async def handle_single_track(
             concurrency.release(user_id)
         if file_path and Path(file_path).exists():
             Path(file_path).unlink()
+        lyrics_path = get_lyrics_path(item, file_path, config.temp_path) if file_path else None
+        if lyrics_path and lyrics_path.exists():
+            lyrics_path.unlink()
 
 
 async def process_track_item(
@@ -396,7 +474,8 @@ async def process_track_item(
     context,
     progress_counter: dict,
     message_id: Optional[int] = None,
-    codec: Optional[str] = None
+    codec: Optional[str] = None,
+    send_lyrics: Optional[bool] = None
 ):
     if item.error:
         progress_counter['failed'] += 1
@@ -405,11 +484,13 @@ async def process_track_item(
     try:
         apple_music_id = item.media_metadata['id']
         codec = codec or await get_effective_codec(context, user_id)
+        send_lyrics = send_lyrics if send_lyrics is not None else await get_send_lyrics(context, user_id)
         upload_key = f"{apple_music_id}:{codec}"
 
         cached = await cache.get_cached_song(apple_music_id, codec)
         if cached:
             await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
+            await send_lyrics_if_enabled(context, chat_id, item, send_lyrics, message_id=message_id)
             progress_counter['processed'] += 1
             return
 
@@ -419,6 +500,7 @@ async def process_track_item(
             cached = await cache.get_cached_song(apple_music_id, codec)
             if cached:
                 await sender.send_cached_audio(context, chat_id, cached['file_id'], cached, message_id)
+                await send_lyrics_if_enabled(context, chat_id, item, send_lyrics, message_id=message_id)
                 progress_counter['processed'] += 1
                 return
             owns_upload_lock = await sender.acquire_upload_lock(upload_key)
@@ -430,7 +512,7 @@ async def process_track_item(
             acquired_concurrency = True
 
             progress_counter['current'] = format_track_label(item)
-            file_path, fallback_message = await downloader.download_track(item, codec=codec)
+            file_path, fallback_message = await downloader.download_track(item, codec=codec, include_lyrics=send_lyrics)
 
             if not file_path or not Path(file_path).exists():
                 raise FileNotFoundError(f"Downloaded file not found at: {file_path}")
@@ -445,6 +527,7 @@ async def process_track_item(
 
             metadata = downloader.extract_metadata(item)
             message = await sender.send_audio(context, chat_id, file_path, metadata, message_id)
+            await send_lyrics_if_enabled(context, chat_id, item, send_lyrics, file_path, message_id)
 
             try:
                 await cache.store_song(
@@ -467,6 +550,9 @@ async def process_track_item(
                 concurrency.release(user_id)
             if file_path and Path(file_path).exists():
                 Path(file_path).unlink()
+            lyrics_path = get_lyrics_path(item, file_path, config.temp_path) if file_path else None
+            if lyrics_path and lyrics_path.exists():
+                lyrics_path.unlink()
 
     except Exception as e:
         logger.exception(f"Error processing track {idx}/{total}")
@@ -482,7 +568,8 @@ async def handle_album_media_group(
     status_msg,
     total: int,
     message_id: Optional[int] = None,
-    codec: Optional[str] = None
+    codec: Optional[str] = None,
+    send_lyrics: Optional[bool] = None
 ):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -493,6 +580,7 @@ async def handle_album_media_group(
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     codec = codec or await get_effective_codec(context, user_id)
+    send_lyrics = send_lyrics if send_lyrics is not None else await get_send_lyrics(context, user_id)
 
     await safe_edit_status(status_msg, f"Found {total} songs, sending as album...")
 
@@ -514,6 +602,9 @@ async def handle_album_media_group(
                     path_obj = Path(file_path)
                     if path_obj.exists():
                         path_obj.unlink()
+                    lyrics_path = get_lyrics_path(entry.get('item'), file_path, config.temp_path) if entry.get('item') else None
+                    if lyrics_path and lyrics_path.exists():
+                        lyrics_path.unlink()
             except Exception as e:
                 logger.warning(f"Failed to clean up temp file: {e}")
 
@@ -541,6 +632,14 @@ async def handle_album_media_group(
                         )
                 else:
                     await sender.send_cached_audio(context, chat_id, entry['file_id'], metadata, message_id)
+                await send_lyrics_if_enabled(
+                    context,
+                    chat_id,
+                    entry.get('item'),
+                    send_lyrics,
+                    entry.get('file_path'),
+                    message_id
+                )
                 processed += 1
             except Exception as e:
                 logger.exception(f"Failed to send track individually: {e}")
@@ -562,6 +661,7 @@ async def handle_album_media_group(
         if cached and cached.get('file_id'):
             prepared_entries.append({
                 'metadata': metadata,
+                'item': item,
                 'file_id': cached['file_id'],
                 'is_cached': True
             })
@@ -574,7 +674,7 @@ async def handle_album_media_group(
             await concurrency.acquire(user_id)
             acquired = True
 
-            file_path, fallback_message = await downloader.download_track(item, codec=codec)
+            file_path, fallback_message = await downloader.download_track(item, codec=codec, include_lyrics=send_lyrics)
             path_obj = Path(file_path)
 
             if not path_obj.exists():
@@ -602,6 +702,7 @@ async def handle_album_media_group(
             if channel_message and channel_message.audio:
                 prepared_entries.append({
                     'metadata': metadata,
+                    'item': item,
                     'file_id': channel_message.audio.file_id,
                     'file_path': file_path,
                     'file_size': file_size,
@@ -618,6 +719,7 @@ async def handle_album_media_group(
             else:
                 individual_entries.append({
                     'metadata': metadata,
+                    'item': item,
                     'file_path': file_path,
                     'file_size': file_size,
                     'needs_upload': True,
@@ -629,6 +731,9 @@ async def handle_album_media_group(
             logger.exception(f"Error preparing track for album group: {e}")
             if file_path and Path(file_path).exists():
                 Path(file_path).unlink()
+            lyrics_path = get_lyrics_path(item, file_path, config.temp_path) if file_path else None
+            if lyrics_path and lyrics_path.exists():
+                lyrics_path.unlink()
         finally:
             if acquired:
                 concurrency.release(user_id)
@@ -693,6 +798,14 @@ async def handle_album_media_group(
                     message.audio.file_unique_id,
                     entry['file_size']
                 )
+            await send_lyrics_if_enabled(
+                context,
+                chat_id,
+                entry.get('item'),
+                send_lyrics,
+                entry.get('file_path'),
+                message_id
+            )
 
         if individual_entries:
             processed += await send_entries_individually(individual_entries)
@@ -727,7 +840,8 @@ async def handle_collection(
     status_msg=None,
     is_album: bool = False,
     message_id: Optional[int] = None,
-    codec: Optional[str] = None
+    codec: Optional[str] = None,
+    send_lyrics: Optional[bool] = None
 ):
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -738,10 +852,11 @@ async def handle_collection(
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     codec = codec or await get_effective_codec(context, user_id)
+    send_lyrics = send_lyrics if send_lyrics is not None else await get_send_lyrics(context, user_id)
 
     total = len(download_queue)
     if is_album and 1 < total <= 10:
-        await handle_album_media_group(update, context, download_queue, status_msg, total, message_id, codec)
+        await handle_album_media_group(update, context, download_queue, status_msg, total, message_id, codec, send_lyrics)
         return
     if not status_msg:
         status_msg = await send_message_with_retry(
@@ -790,7 +905,8 @@ async def handle_collection(
             downloader, cache, sender, concurrency, config, context,
             progress_counter,
             message_id,
-            codec
+            codec,
+            send_lyrics
         )
         for idx, item in enumerate(download_queue, 1)
     ]

@@ -15,7 +15,9 @@ def help_text(is_admin: bool = False) -> str:
         "Commands:\n"
         "- /help: show this help message\n"
         "- /codec: show your download codec\n"
-        "- /codec aac: set your download codec"
+        "- /codec aac: set your download codec\n"
+        "- /lyrics: show lyrics file setting\n"
+        "- /lyrics on: send .lrc files after audio when available"
     )
 
     if is_admin:

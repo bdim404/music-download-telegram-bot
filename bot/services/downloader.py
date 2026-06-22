@@ -101,7 +101,6 @@ class DownloaderService:
         self.apple_music_api = None
         self.downloader = None
         self.downloaders = {}
-        self.fallback_downloader = None
         self.interface = None
         self.base_downloader = None
 
@@ -207,8 +206,8 @@ class DownloaderService:
 
         selected_codec = CODEC_MAP.get(effective_codec, SongCodec.AAC_LEGACY)
 
-        self.downloader = self._create_downloader(selected_codec)
-        self.downloaders[effective_codec] = self.downloader
+        self.downloader = self._create_downloader(selected_codec, include_lyrics=False)
+        self.downloaders[(effective_codec, False)] = self.downloader
 
         if not self.base_downloader.full_mp4decrypt_path:
             raise RuntimeError(
@@ -217,13 +216,13 @@ class DownloaderService:
                 "  Ubuntu: sudo apt-get install bento4"
             )
 
-    def _create_downloader(self, codec: SongCodec) -> AppleMusicDownloader:
+    def _create_downloader(self, codec: SongCodec, include_lyrics: bool = False) -> AppleMusicDownloader:
         song_interface = AppleMusicSongInterface(self.interface)
         song_downloader = AppleMusicSongDownloader(
             base_downloader=self.base_downloader,
             interface=song_interface,
             codec_priority=[codec],
-            no_synced_lyrics=True
+            no_synced_lyrics=not include_lyrics
         )
 
         music_video_interface = AppleMusicMusicVideoInterface(self.interface)
@@ -247,17 +246,19 @@ class DownloaderService:
             skip_processing=False
         )
 
-    def _get_downloader(self, codec: str | None = None) -> AppleMusicDownloader:
+    def _get_downloader(self, codec: str | None = None, include_lyrics: bool = False) -> AppleMusicDownloader:
         requested_codec = self.effective_codec(codec)
+        key = (requested_codec, include_lyrics)
 
-        if requested_codec not in self.downloaders:
-            self.downloaders[requested_codec] = self._create_downloader(
-                CODEC_MAP.get(requested_codec, SongCodec.AAC_LEGACY)
+        if key not in self.downloaders:
+            self.downloaders[key] = self._create_downloader(
+                CODEC_MAP.get(requested_codec, SongCodec.AAC_LEGACY),
+                include_lyrics=include_lyrics
             )
-        return self.downloaders[requested_codec]
+        return self.downloaders[key]
 
-    def _create_fallback_downloader(self, codec: SongCodec) -> AppleMusicDownloader:
-        return self._create_downloader(codec)
+    def _create_fallback_downloader(self, codec: SongCodec, include_lyrics: bool = False) -> AppleMusicDownloader:
+        return self._create_downloader(codec, include_lyrics=include_lyrics)
 
     async def _try_aac_fallback_chain(
         self,
@@ -266,7 +267,8 @@ class DownloaderService:
         primary_codec: str,
         track_id: str,
         track_artist: str,
-        track_title: str
+        track_title: str,
+        include_lyrics: bool = False
     ) -> tuple[DownloadItem, str]:
         fallback_chain = AAC_FALLBACK_CHAIN.get(primary_codec, [])
         if not fallback_chain:
@@ -283,7 +285,10 @@ class DownloaderService:
             fallback_codec = CODEC_MAP.get(fallback_codec_str, SongCodec.AAC_LEGACY)
 
             try:
-                fallback_downloader = self._create_fallback_downloader(fallback_codec)
+                fallback_downloader = self._create_fallback_downloader(
+                    fallback_codec,
+                    include_lyrics=include_lyrics
+                )
 
                 if not url_info:
                     track_url = download_item.media_metadata.get('attributes', {}).get('url', '')
@@ -325,14 +330,20 @@ class DownloaderService:
     def parse_url(self, url: str) -> UrlInfo | None:
         return self.downloader.get_url_info(url)
 
-    async def get_download_queue(self, url_info: UrlInfo, codec: str | None = None) -> list[DownloadItem]:
-        return await self._get_downloader(codec).get_download_queue(url_info)
+    async def get_download_queue(
+        self,
+        url_info: UrlInfo,
+        codec: str | None = None,
+        include_lyrics: bool = False
+    ) -> list[DownloadItem]:
+        return await self._get_downloader(codec, include_lyrics=include_lyrics).get_download_queue(url_info)
 
     async def download_track(
         self,
         download_item: DownloadItem,
         url_info: UrlInfo = None,
-        codec: str | None = None
+        codec: str | None = None,
+        include_lyrics: bool = False
     ) -> tuple[str, str | None]:
         fallback_message = None
         high_quality_codecs = ['atmos', 'alac']
@@ -345,7 +356,7 @@ class DownloaderService:
         logger.info(f"[{track_id}] Starting download: {track_artist} - {track_title} (codec: {requested_codec.upper()})")
 
         try:
-            await self._get_downloader(requested_codec).download(download_item)
+            await self._get_downloader(requested_codec, include_lyrics=include_lyrics).download(download_item)
             logger.info(f"[{track_id}] Download completed: {track_artist} - {track_title}")
         except Exception as e:
             error_msg = str(e).lower()
@@ -383,20 +394,22 @@ class DownloaderService:
                 logger.warning(f"[{track_id}] {requested_codec.upper()} not available, falling back to AAC")
                 fallback_message = f"⚠️ {requested_codec.upper()} not available, using AAC instead"
 
-                if not self.fallback_downloader:
-                    self.fallback_downloader = self._create_fallback_downloader(SongCodec.AAC)
+                fallback_downloader = self._create_fallback_downloader(
+                    SongCodec.AAC,
+                    include_lyrics=include_lyrics
+                )
 
                 if not url_info:
                     track_url = download_item.media_metadata.get('attributes', {}).get('url', '')
                     if track_url:
-                        url_info = self.fallback_downloader.get_url_info(track_url)
+                        url_info = fallback_downloader.get_url_info(track_url)
 
                 if not url_info:
                     logger.error(f"[{track_id}] Cannot fallback: URL not available")
                     raise
 
                 logger.info(f"[{track_id}] Creating fallback download queue...")
-                fallback_queue = await self.fallback_downloader.get_download_queue(url_info)
+                fallback_queue = await fallback_downloader.get_download_queue(url_info)
                 if fallback_queue:
                     fallback_item = fallback_queue[0]
 
@@ -406,12 +419,13 @@ class DownloaderService:
                         )
                         download_item, fallback_message = await self._try_aac_fallback_chain(
                             fallback_item, url_info, 'aac',
-                            track_id, track_artist, track_title
+                            track_id, track_artist, track_title,
+                            include_lyrics=include_lyrics
                         )
                     else:
                         logger.info(f"[{track_id}] Fallback queue created, downloading with AAC codec...")
                         try:
-                            await self.fallback_downloader.download(fallback_item)
+                            await fallback_downloader.download(fallback_item)
                             logger.info(f"[{track_id}] AAC fallback download completed: {track_artist} - {track_title}")
                             download_item = fallback_item
                         except Exception as fallback_error:
@@ -433,7 +447,8 @@ class DownloaderService:
                                 )
                                 download_item, fallback_message = await self._try_aac_fallback_chain(
                                     fallback_item, url_info, 'aac',
-                                    track_id, track_artist, track_title
+                                    track_id, track_artist, track_title,
+                                    include_lyrics=include_lyrics
                                 )
                             else:
                                 logger.error(f"[{track_id}] AAC fallback download failed with unexpected error: {fallback_error}")
@@ -446,7 +461,8 @@ class DownloaderService:
                 try:
                     download_item, fallback_message = await self._try_aac_fallback_chain(
                         download_item, url_info, requested_codec,
-                        track_id, track_artist, track_title
+                        track_id, track_artist, track_title,
+                        include_lyrics=include_lyrics
                     )
                 except Exception:
                     raise

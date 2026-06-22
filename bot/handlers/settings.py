@@ -30,9 +30,10 @@ def _format_user_row(user: dict) -> str:
     if user.get('username'):
         name = f"@{name}"
     codec = user.get('download_codec') or "-"
+    lyrics = "on" if user.get('send_lyrics') else "off"
     downloads = user.get('download_count') or 0
     last_activity = user.get('last_activity') or "-"
-    return f"- {user['user_id']} {name} codec={codec} downloads={downloads} last={last_activity}"
+    return f"- {user['user_id']} {name} codec={codec} lyrics={lyrics} downloads={downloads} last={last_activity}"
 
 
 async def codec_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,6 +91,40 @@ async def codec_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Download codec set to `{requested_codec}`.",
         parse_mode="Markdown"
     )
+
+
+async def lyrics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user or not update.message:
+        return
+
+    log_user_action(update, "command_lyrics", args_count=len(context.args))
+    cache = context.bot_data['cache']
+    current = await cache.get_user_send_lyrics(user.id)
+
+    if not context.args:
+        status = "on" if current else "off"
+        await update.message.reply_text(
+            f"Lyrics files are `{status}`.\n\n"
+            "Use `/lyrics on` to send .lrc files after audio when available.\n"
+            "Use `/lyrics off` to disable them.",
+            parse_mode="Markdown"
+        )
+        return
+
+    value = context.args[0].lower()
+    if value not in {"on", "off", "true", "false", "1", "0", "yes", "no"}:
+        await update.message.reply_text("Usage: /lyrics on or /lyrics off")
+        return
+
+    enabled = value in {"on", "true", "1", "yes"}
+    await cache.set_user_send_lyrics(
+        user.id,
+        enabled,
+        user.username,
+        user.first_name
+    )
+    await update.message.reply_text(f"Lyrics files set to `{'on' if enabled else 'off'}`.", parse_mode="Markdown")
 
 
 async def allow_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
