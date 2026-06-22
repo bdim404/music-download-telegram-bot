@@ -1,6 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ..services.audit import log_user_action
+
 
 class NotWhitelistedError(Exception):
     pass
@@ -49,10 +51,14 @@ class WhitelistMiddleware:
         user_id = update.effective_user.id
 
         if not await self.check_user_async(user_id):
+            log_user_action(update, "access_denied")
             if update.message:
                 await update.message.reply_text(
-                    "Access denied. Please contact the administrator for access."
+                    "Access denied. Please contact the administrator for access.\n"
+                    f"Your Telegram user ID is `{user_id}`.",
+                    parse_mode="Markdown"
                 )
             return False
 
+        log_user_action(update, "access_allowed")
         return True

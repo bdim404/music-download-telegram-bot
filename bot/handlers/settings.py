@@ -1,6 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ..services.audit import log_user_action
+
 
 MAX_MESSAGE_LENGTH = 3900
 
@@ -38,6 +40,7 @@ async def codec_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not update.message:
         return
 
+    log_user_action(update, "command_codec", args_count=len(context.args))
     cache = context.bot_data['cache']
     config = context.bot_data['config']
     downloader = context.bot_data['downloader']
@@ -88,8 +91,10 @@ async def allow_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not update.message:
         return
 
+    log_user_action(update, "command_allow", args_count=len(context.args))
     whitelist = context.bot_data['whitelist']
     if not whitelist.check_admin(user.id):
+        log_user_action(update, "admin_command_denied", command="allow")
         await update.message.reply_text("Only administrators can allow users.")
         return
 
@@ -99,6 +104,7 @@ async def allow_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_user = update.message.reply_to_message.from_user if update.message.reply_to_message else None
+    log_user_action(update, "user_allowed", target_user_id=target_user_id)
     await context.bot_data['cache'].set_user_whitelist(
         target_user_id,
         True,
@@ -113,8 +119,10 @@ async def deny_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not update.message:
         return
 
+    log_user_action(update, "command_deny", args_count=len(context.args))
     whitelist = context.bot_data['whitelist']
     if not whitelist.check_admin(user.id):
+        log_user_action(update, "admin_command_denied", command="deny")
         await update.message.reply_text("Only administrators can deny users.")
         return
 
@@ -123,6 +131,7 @@ async def deny_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /deny <telegram_user_id> or reply with /deny")
         return
 
+    log_user_action(update, "user_denied", target_user_id=target_user_id)
     await context.bot_data['cache'].set_user_whitelist(target_user_id, False)
     await update.message.reply_text(f"Denied user `{target_user_id}`.", parse_mode="Markdown")
 
@@ -132,8 +141,10 @@ async def list_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or not update.message:
         return
 
+    log_user_action(update, "command_list")
     whitelist = context.bot_data['whitelist']
     if not whitelist.check_admin(user.id):
+        log_user_action(update, "admin_command_denied", command="list")
         await update.message.reply_text("Only administrators can list users.")
         return
 

@@ -1,6 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ..services.audit import log_user_action
+
 
 def help_text(is_admin: bool = False) -> str:
     text = (
@@ -35,4 +37,5 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     whitelist = context.bot_data.get('whitelist')
     is_admin = bool(user and whitelist and whitelist.check_admin(user.id))
+    log_user_action(update, "command_help", is_admin=is_admin)
     await update.message.reply_text(help_text(is_admin))

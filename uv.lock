@@ -261,7 +261,7 @@ wheels = [
 
 [[package]]
 name = "music-download-telegram-bot"
-version = "0.5.3"
+version = "0.5.4"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

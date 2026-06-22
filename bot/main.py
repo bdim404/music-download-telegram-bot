@@ -2,6 +2,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from telegram import BotCommand, BotCommandScopeChat, BotCommandScopeDefault
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -31,6 +32,36 @@ logging.basicConfig(
 )
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+
+async def configure_bot_commands(application, config):
+    user_commands = [
+        BotCommand("start", "Show help"),
+        BotCommand("help", "Show help"),
+        BotCommand("codec", "Show or set your download codec"),
+    ]
+    admin_commands = [
+        *user_commands,
+        BotCommand("allow", "Allow a user"),
+        BotCommand("deny", "Deny a user"),
+        BotCommand("list", "List whitelisted users"),
+    ]
+
+    await application.bot.set_my_commands(
+        user_commands,
+        scope=BotCommandScopeDefault()
+    )
+
+    for admin_user_id in getattr(config, 'admin_users', []):
+        try:
+            await application.bot.set_my_commands(
+                admin_commands,
+                scope=BotCommandScopeChat(chat_id=admin_user_id)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to set admin commands for {admin_user_id}: {e}")
+
+    logger.info("Telegram command menu configured")
 
 
 async def shutdown_handler(application):
@@ -116,6 +147,7 @@ async def main():
     application.add_error_handler(error_handler)
 
     await application.initialize()
+    await configure_bot_commands(application, config)
     await application.start()
     await application.updater.start_polling()
 

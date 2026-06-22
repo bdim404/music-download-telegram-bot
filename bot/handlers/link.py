@@ -8,6 +8,7 @@ import asyncio
 import re
 from gamdl.downloader.constants import ALBUM_MEDIA_TYPE
 
+from ..services.audit import log_user_action
 
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,13 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
     chat_id = update.effective_chat.id
     message_text = message.text.strip()
+    has_music_link = has_apple_music_domain(message_text)
+    log_user_action(
+        update,
+        "message_received",
+        has_apple_music_link=has_music_link,
+        text_length=len(message_text)
+    )
 
     downloader = context.bot_data['downloader']
     cache = context.bot_data['cache']
@@ -120,12 +128,15 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Group message detected: chat_id={chat_id}, user_id={user_id}")
         logger.info(f"Whitelisted groups: {whitelist.whitelist_groups}")
         if not whitelist.check_group(chat_id):
-            logger.info(f"Group {chat_id} not in whitelist, ignoring")
+            logger.info(f"Group {chat_id} not in whitelist")
+            if has_music_link:
+                log_user_action(update, "access_denied", reason="group_not_whitelisted")
             return
         logger.info(f"Group {chat_id} is whitelisted, checking for Apple Music domain")
-        if not has_apple_music_domain(message_text):
+        if not has_music_link:
             logger.info(f"Ignoring non-Apple Music message in group {chat_id}")
             return
+        log_user_action(update, "access_allowed", scope="group")
         logger.info(f"Processing Apple Music link in group {chat_id}")
     else:
         if not await whitelist(update, context):
@@ -133,9 +144,10 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     urls = extract_apple_music_urls(message_text)
     if not urls:
-        logger.info(f"No valid Apple Music URLs found in message: {message_text[:50]}...")
+        logger.info(f"No valid Apple Music URLs found in message, text_length={len(message_text)}")
         return
 
+    log_user_action(update, "apple_music_urls_found", count=len(urls))
     if len(urls) == 1:
         await process_single_url(update, context, urls[0])
     else:
