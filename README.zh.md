@@ -128,6 +128,16 @@ music-download-telegram-bot
 python -m bot.main
 ```
 
+## 版本发布
+
+启动时日志会打印当前版本号。安装 Git hooks 后，每次提交都会自动升级 patch 版本，并给提交打 `vX.Y.Z` tag：
+
+```bash
+scripts/install_git_hooks.sh
+git commit -m "your change"
+git push --follow-tags
+```
+
 ## 使用方法
 
 1. 启动 Bot 后，发送 `/start` 命令

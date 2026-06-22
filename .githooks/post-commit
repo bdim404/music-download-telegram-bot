@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+
+version="$(git show HEAD:pyproject.toml | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1)"
+tag="v$version"
+
+if git rev-parse "$tag" >/dev/null 2>&1; then
+  exit 0
+fi
+
+git tag -a "$tag" -m "Release $tag"
+echo "Created release tag $tag"

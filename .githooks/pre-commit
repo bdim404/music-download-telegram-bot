@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+PYTHON_BIN="${PYTHON:-python3}"
+if command -v /home/bdim/.nix-profile/bin/python3 >/dev/null 2>&1; then
+  PYTHON_BIN="/home/bdim/.nix-profile/bin/python3"
+fi
+
+"$PYTHON_BIN" scripts/bump_patch_version.py --stage

@@ -22,6 +22,7 @@ from .handlers.start import start_handler
 from .handlers.link import link_handler
 from .handlers.settings import allow_handler, codec_handler, deny_handler
 from .handlers.error import error_handler
+from .version import get_version
 
 
 logging.basicConfig(
@@ -41,7 +42,8 @@ async def shutdown_handler(application):
 
 
 async def main():
-    logger.info("Starting Apple Music Download Telegram Bot...")
+    version = get_version()
+    logger.info(f"Starting Apple Music Download Telegram Bot v{version}...")
 
     config = Config.load()
     logger.info(f"Config loaded from config.yaml")

@@ -128,6 +128,16 @@ music-download-telegram-bot
 python -m bot.main
 ```
 
+## Versioning
+
+The bot logs its current version at startup. After installing Git hooks, every commit automatically bumps the patch version and tags the commit as `vX.Y.Z`:
+
+```bash
+scripts/install_git_hooks.sh
+git commit -m "your change"
+git push --follow-tags
+```
+
 ## Usage
 
 1. After starting the bot, send `/start` command
