@@ -105,11 +105,13 @@ max_file_size_mb: 50
 database_path: "./data/cache.db"
 temp_path: "./data/temp"
 
-# Audio codec: atmos, alac, aac, aac-he, aac-legacy, ac3, etc.
+# Default audio codec: atmos, alac, aac, aac-he, aac-legacy, ac3, etc.
+# Users can override this with /codec; user preference has the highest priority.
 # Falls back to aac automatically if the track doesn't support the chosen codec
 song_codec: "atmos"
 
-# Wrapper service for ALAC / Dolby Atmos (requires wrapper running)
+# Wrapper service availability for ALAC / Dolby Atmos.
+# This allows wrapper-only codecs; it does not force every download to use them.
 use_wrapper: true
 wrapper_url: "127.0.0.1:10020"
 

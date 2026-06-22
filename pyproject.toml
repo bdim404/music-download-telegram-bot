@@ -1,6 +1,6 @@
 [project]
 name = "music-download-telegram-bot"
-version = "0.5.4"
+version = "0.5.5"
 requires-python = ">=3.12"
 dependencies = [
     "python-telegram-bot[job-queue]==21.10",

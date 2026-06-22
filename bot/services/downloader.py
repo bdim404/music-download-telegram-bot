@@ -173,20 +173,18 @@ class DownloaderService:
         )
 
         requested_codec = self.normalize_codec(self.config.song_codec)
+        effective_codec = self.effective_codec(requested_codec)
 
-        if not self.config.use_wrapper and requested_codec in WRAPPER_REQUIRED_CODECS:
+        if requested_codec != effective_codec:
             logger.warning(
                 f"Codec '{requested_codec.upper()}' requires wrapper service, but use_wrapper is disabled. "
-                f"Falling back to AAC codec."
+                f"Defaulting to {effective_codec.upper()} instead."
             )
-            selected_codec = SongCodec.AAC
-            downloader_key = "aac"
-        else:
-            selected_codec = CODEC_MAP.get(requested_codec, SongCodec.AAC_LEGACY)
-            downloader_key = requested_codec
+
+        selected_codec = CODEC_MAP.get(effective_codec, SongCodec.AAC_LEGACY)
 
         self.downloader = self._create_downloader(selected_codec)
-        self.downloaders[downloader_key] = self.downloader
+        self.downloaders[effective_codec] = self.downloader
 
         if not self.base_downloader.full_mp4decrypt_path:
             raise RuntimeError(

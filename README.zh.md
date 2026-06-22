@@ -105,11 +105,13 @@ max_file_size_mb: 50
 database_path: "./data/cache.db"
 temp_path: "./data/temp"
 
-# 音频编码: atmos、alac、aac、aac-he、aac-legacy、ac3 等
+# 默认音频编码: atmos、alac、aac、aac-he、aac-legacy、ac3 等
+# 用户可以用 /codec 覆盖默认值，用户个人设置优先级最高
 # 若歌曲不支持所选编码，将自动回退至 aac
 song_codec: "atmos"
 
-# Wrapper 服务（ALAC / Dolby Atmos 支持，需先启动 wrapper）
+# Wrapper 服务可用性（ALAC / Dolby Atmos 支持，需先启动 wrapper）
+# 这里只是允许选择 wrapper-only 编码，不会强制所有下载都使用它们
 use_wrapper: true
 wrapper_url: "127.0.0.1:10020"
 

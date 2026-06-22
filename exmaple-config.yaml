@@ -33,7 +33,8 @@ database_path: "./data/cache.db"
 # Temporary directory for downloads
 temp_path: "./data/temp"
 
-# Audio codec for downloads
+# Default audio codec for downloads.
+# Users can override this with /codec; user preference has the highest priority.
 # Available options:
 #   - "atmos"         : Dolby Atmos (eac3, 768kbps, multi-channel) - requires wrapper
 #   - "alac"          : Apple Lossless (1600kbps+, lossless) - requires wrapper
@@ -46,8 +47,9 @@ temp_path: "./data/temp"
 # Note: If a song doesn't support atmos/alac, it will automatically fallback to aac
 song_codec: "atmos"
 
-# Enable wrapper service for ALAC/Dolby Atmos downloads
-# Set to true to enable high-quality formats (requires wrapper service running)
+# Enable wrapper service availability for ALAC/Dolby Atmos downloads.
+# This does not force every download to use wrapper-only codecs; it only allows
+# users or the global default codec to select them.
 # Wrapper service: https://github.com/WorldObservationLog/wrapper
 use_wrapper: true
 

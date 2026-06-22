@@ -45,13 +45,19 @@ async def codec_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = context.bot_data['config']
     downloader = context.bot_data['downloader']
 
-    current_codec = await cache.get_user_codec(user.id, config.song_codec)
-    current_codec = downloader.effective_codec(current_codec)
+    configured_codec = await cache.get_user_codec(user.id, config.song_codec)
+    configured_codec = downloader.normalize_codec(configured_codec)
+    effective_codec = downloader.effective_codec(configured_codec)
 
     if not context.args:
+        fallback_text = ""
+        if configured_codec != effective_codec:
+            fallback_text = f"\nEffective codec: `{effective_codec}`"
         await update.message.reply_text(
             "Current codec: "
-            f"`{current_codec}`\n\n"
+            f"`{configured_codec}`"
+            f"{fallback_text}\n"
+            f"Default codec: `{downloader.normalize_codec(config.song_codec)}`\n\n"
             "Set codec with `/codec <codec>`.\n"
             f"Available codecs: {_format_codecs(downloader.supported_codecs)}",
             parse_mode="Markdown"

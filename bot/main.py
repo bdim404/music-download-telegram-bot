@@ -88,11 +88,12 @@ async def main():
     logger.info(f"Downloader service initialized with cookies from {config.cookies_path}")
     logger.info(f"Subscription active: {downloader.apple_music_api.active_subscription}")
     logger.info(f"Storefront: {downloader.apple_music_api.storefront}")
-    logger.info(f"Audio codec: {config.song_codec.upper()}")
+    logger.info(f"Default codec: {downloader.normalize_codec(config.song_codec).upper()}")
+    logger.info(f"Effective default codec: {downloader.effective_codec(config.song_codec).upper()}")
     if config.use_wrapper:
-        logger.info(f"Wrapper mode: ENABLED (supports ALAC/Dolby Atmos)")
+        logger.info("Wrapper availability: ENABLED (ALAC/Dolby Atmos can be selected)")
     else:
-        logger.info(f"Wrapper mode: DISABLED (AAC only)")
+        logger.info("Wrapper availability: DISABLED (wrapper-only codecs fall back to AAC)")
 
     cache = CacheService(db)
     sender = SenderService()
