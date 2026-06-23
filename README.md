@@ -187,6 +187,6 @@ A: Start the wrapper Docker container (see Installation section) or set `use_wra
 **Q: What if cookies expire?**
 A: Re-export cookies.txt from your browser and restart the bot
 
-## Try
+## Try It Out
 
-You can PM me and then use my bot by [bdim_music_bot](https://t.me/bdim_music_bot)
+To use this bot, join the group: [CapitalBMusicGroup](https://t.me/CapitalBMusicGroup)
